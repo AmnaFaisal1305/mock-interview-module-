@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+
+# Logs
+logs/*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
+
+# Temp / test files
+session_id.txt
+*.pdf
+
+# Logs folder (keep the folder, not the logs)
+logs/
+!logs/.gitkeep
+
+

@@ -1,0 +1,15 @@
+# Core bot
+pipecat-ai[google,livekit]
+
+# Google Gemini (new SDK — used by scoring)
+google-genai
+
+# LiveKit server SDK (token generation)
+livekit-api
+
+# .env loader
+python-dotenv
+
+# Document parsing (resume/JD upload)
+pdfplumber
+python-docx

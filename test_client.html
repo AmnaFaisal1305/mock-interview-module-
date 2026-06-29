@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CareerPilot — Test Client</title>
+<style>
+  body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; background: #0f0f0f; color: #e0e0e0; }
+  h2 { color: #7c6aff; }
+  label { display: block; margin-top: 14px; font-size: 13px; color: #aaa; }
+  input, textarea { width: 100%; padding: 8px; margin-top: 4px; background: #1e1e1e; border: 1px solid #333; color: #fff; border-radius: 6px; box-sizing: border-box; }
+  textarea { height: 80px; font-size: 12px; }
+  button { margin-top: 18px; padding: 10px 24px; background: #7c6aff; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; }
+  button:disabled { background: #444; cursor: default; }
+  #status { margin-top: 16px; padding: 10px; border-radius: 6px; background: #1e1e1e; font-size: 13px; white-space: pre-wrap; min-height: 40px; }
+  #status.ok   { border-left: 3px solid #4caf50; }
+  #status.err  { border-left: 3px solid #f44336; }
+  #status.info { border-left: 3px solid #7c6aff; }
+  audio { margin-top: 12px; width: 100%; }
+</style>
+</head>
+<body>
+
+<h2>CareerPilot — Test Client</h2>
+<p style="font-size:13px;color:#888">Paste the values returned by POST /interview/start, then click Connect.</p>
+
+<label>LiveKit URL</label>
+<input id="lk_url" value="wss://mock-interview-6jl67ty0.livekit.cloud" />
+
+<label>User Token (from API response)</label>
+<textarea id="lk_token" placeholder="Paste user_token here..."></textarea>
+
+<button id="btn_connect" onclick="connect()">Connect &amp; Start Interview</button>
+<button id="btn_leave" onclick="leave()" disabled style="background:#c0392b;margin-left:10px">Leave Room</button>
+
+<div id="status" class="info">Waiting to connect...</div>
+<div id="audio_container"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script>
+let room = null;
+
+function log(msg, type="info") {
+  const el = document.getElementById("status");
+  el.className = type;
+  el.textContent = msg;
+  console.log(msg);
+}
+
+async function connect() {
+  const url   = document.getElementById("lk_url").value.trim();
+  const token = document.getElementById("lk_token").value.trim();
+
+  if (!url || !token) { log("Fill in both fields first.", "err"); return; }
+
+  document.getElementById("btn_connect").disabled = true;
+  log("Connecting to LiveKit...", "info");
+
+  try {
+    room = new LivekitClient.Room({
+      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true }
+    });
+
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, pub, participant) => {
+      if (track.kind === LivekitClient.Track.Kind.Audio) {
+        const el = track.attach();
+        el.autoplay = true;
+        document.getElementById("audio_container").appendChild(el);
+        log(`Bot audio connected — you should hear the bot now.`, "ok");
+      }
+    });
+
+    room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => {
+      log(`Participant joined: ${p.identity}`, "info");
+    });
+
+    room.on(LivekitClient.RoomEvent.Disconnected, () => {
+      log("Disconnected from room. Check MongoDB Atlas for transcript + score.", "info");
+      document.getElementById("btn_leave").disabled = true;
+      document.getElementById("btn_connect").disabled = false;
+    });
+
+    await room.connect(url, token);
+    await room.localParticipant.setMicrophoneEnabled(true);
+
+    log(`Connected! Room: ${room.name}\nMic is ON — wait for the bot to greet you, then answer questions.\nClick "Leave Room" when done.`, "ok");
+    document.getElementById("btn_leave").disabled = false;
+
+  } catch(e) {
+    log(`Connection failed: ${e.message}`, "err");
+    document.getElementById("btn_connect").disabled = false;
+  }
+}
+
+async function leave() {
+  if (room) {
+    await room.disconnect();
+    room = null;
+  }
+  document.getElementById("btn_leave").disabled = true;
+  document.getElementById("btn_connect").disabled = false;
+  log("Left the room. Scoring is running in background.\nCheck Atlas or GET /interview/{session_id}/report in Swagger.", "ok");
+}
+</script>
+</body>
+</html>
