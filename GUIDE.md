@@ -309,7 +309,7 @@ Read side (API):
 
 Connection uses a **lazy singleton** — the `MongoClient` is created once on first use. Uses `certifi` for SSL certificate validation (required by Python 3.14 on Windows connecting to MongoDB Atlas).
 
-Collections in MongoDB Atlas (`careerpilot` database):
+Collections in MongoDB Atlas (`CareerPilot` database):
 - `transcripts` — one document per session, all raw conversation entries
 - `scoring_reports` — one document per session, full structured scoring report
 - `recordings` — one document per session, R2 key + egress ID + format + timestamp
@@ -355,6 +355,8 @@ class QuestionScoreOutput(BaseModel):
     strengths: list[str]
     gaps: list[str]
     suggestion: str
+    question_en: str    # English translation of the question (empty if already English)
+    answer_en: str      # English translation of the candidate's answer (empty if already English)
 ```
 
 **`HolisticScoreOutput`** — what the LLM returns for the full session:
@@ -366,6 +368,20 @@ class HolisticScoreOutput(BaseModel):
     communication_quality: CommunicationQuality
     top_recommendations: list[str]   # exactly 3 items
     round_specific_insight: str
+```
+
+**`QuestionResult`** — per-question entry inside the final report:
+```python
+class QuestionResult(BaseModel):
+    question_index: int
+    question: str       # original question (may be Urdu)
+    answer: str         # original answer (may be Urdu/mixed)
+    question_en: str    # English translation (empty if already English)
+    answer_en: str      # English translation (empty if already English)
+    score: int          # 0–10 (-1 if scoring failed)
+    strengths: list[str]
+    gaps: list[str]
+    suggestion: str
 ```
 
 **`ScoringReport`** — the complete document stored in MongoDB:
@@ -485,6 +501,8 @@ The URL is valid for 1 hour. The frontend passes it directly to an `<audio>` ele
       "question_index": 0,
       "question": "Walk me through your experience at TechCorp.",
       "answer": "I led a team of 2 developers...",
+      "question_en": "",
+      "answer_en": "",
       "score": 7,
       "strengths": ["Gave specific numbers", "Referenced the resume directly"],
       "gaps": ["No STAR structure used"],
@@ -506,7 +524,7 @@ The URL is valid for 1 hour. The frontend passes it directly to an `<audio>` ele
 | `GOOGLE_API_KEY` | `bot/main.py` | Gemini Live API key (Phase 1 — live voice) |
 | `GROQ_API_KEY` | `bot/scoring/per_question.py`, `bot/scoring/holistic.py` | Groq API key (Phase 2 — scoring) |
 | `MONGODB_URI` | `api/db.py` | MongoDB Atlas connection string |
-| `MONGODB_DB` | `api/db.py` | Database name (default: `careerpilot`) |
+| `MONGODB_DB` | `api/db.py` | Database name — must match exactly: `CareerPilot` |
 | `R2_ACCOUNT_ID` | `api/session.py`, `api/r2.py` | Cloudflare account ID for R2 endpoint |
 | `R2_ACCESS_KEY_ID` | `api/session.py`, `api/r2.py` | R2 API access key |
 | `R2_SECRET_ACCESS_KEY` | `api/session.py`, `api/r2.py` | R2 API secret key |
