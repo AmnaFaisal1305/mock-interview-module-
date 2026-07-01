@@ -1,0 +1,321 @@
+{
+  "info": {
+    "_postman_id": "849ef001-dfc7-42d9-b27f-54bf8e2cbcc2",
+    "name": "CareerPilot API",
+    "description": "All endpoints for the CareerPilot Interview Simulator. Base URL is stored in the {{base_url}} collection variable (default: http://127.0.0.1:8000). After running POST /interview/start, the session_id is auto-saved to the {{session_id}} variable for use in all subsequent requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Session",
+      "item": [
+        {
+          "name": "POST /upload/document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response has extracted text', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property('text');",
+                  "    pm.expect(body).to.have.property('char_count');",
+                  "    pm.expect(body).to.have.property('word_count');",
+                  "    pm.expect(body.char_count).to.be.above(10);",
+                  "    pm.collectionVariables.set('resume_text', body.text);",
+                  "    console.log('Extracted', body.word_count, 'words from', body.filename);",
+                  "    console.log('resume_text saved to collection variable');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "description": "Select your resume PDF or DOCX file (max 5 MB). Supported: .pdf, .docx",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/upload/document",
+              "host": ["{{base_url}}"],
+              "path": ["upload", "document"]
+            },
+            "description": "Upload a resume or job description as PDF or DOCX (max 5 MB). Returns extracted plain text. Run this before POST /interview/start — the test script auto-saves the extracted text to {{resume_text}} collection variable."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /interview/start",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response has session_id', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property('session_id');",
+                  "    pm.expect(body).to.have.property('user_token');",
+                  "    pm.expect(body).to.have.property('livekit_url');",
+                  "    pm.collectionVariables.set('session_id', body.session_id);",
+                  "    console.log('session_id saved:', body.session_id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"round_type\": \"hr\",\n  \"candidate_name\": \"Ali Khan\",\n  \"resume\": \"Ali Khan is a software engineer with 3 years of experience in Python and FastAPI. He has worked at two startups building REST APIs and real-time systems. He holds a BS in Computer Science from FAST-NUCES.\",\n  \"job_description\": \"We are hiring a Backend Engineer for our AI platform team. The role requires Python expertise, experience with async frameworks (FastAPI/Aiohttp), REST API design, and comfort with cloud infrastructure (AWS or GCP). Salary range: PKR 150,000 - 250,000/month. Remote-friendly.\",\n  \"num_questions\": 3,\n  \"language\": \"english\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/interview/start",
+              "host": ["{{base_url}}"],
+              "path": ["interview", "start"]
+            },
+            "description": "Start a new interview session. Returns session_id, livekit_url, and user_token. The test script auto-saves session_id to {{session_id}} for use in all Results requests."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Results",
+      "item": [
+        {
+          "name": "GET /interview/{session_id}/report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/interview/{{session_id}}/report",
+              "host": ["{{base_url}}"],
+              "path": ["interview", "{{session_id}}", "report"]
+            },
+            "description": "Returns the full JSON scoring report. Returns 202 while scoring is still running — poll every 4-5 seconds until 200."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /interview/{session_id}/transcript",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/interview/{{session_id}}/transcript",
+              "host": ["{{base_url}}"],
+              "path": ["interview", "{{session_id}}", "transcript"]
+            },
+            "description": "Returns the full conversation transcript — all agent and candidate turns with timestamps."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /interview/{session_id}/recording",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/interview/{{session_id}}/recording",
+              "host": ["{{base_url}}"],
+              "path": ["interview", "{{session_id}}", "recording"]
+            },
+            "description": "Returns a presigned URL to the .ogg audio recording hosted on Cloudflare R2. URL expires in 1 hour."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Error Cases",
+      "item": [
+        {
+          "name": "POST /interview/start — invalid round_type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"round_type\": \"invalid_round\",\n  \"candidate_name\": \"Test\",\n  \"resume\": \"Test resume content here for validation\",\n  \"job_description\": \"Test job description content here\",\n  \"num_questions\": 3,\n  \"language\": \"english\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/interview/start",
+              "host": ["{{base_url}}"],
+              "path": ["interview", "start"]
+            },
+            "description": "Should return 422 with error detail listing valid round_type values."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /interview/{session_id}/report — unknown session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/interview/00000000-0000-0000-0000-000000000000/report",
+              "host": ["{{base_url}}"],
+              "path": ["interview", "00000000-0000-0000-0000-000000000000", "report"]
+            },
+            "description": "Should return 404 — session does not exist."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /upload/document — wrong file type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 415 for unsupported file type', () => {",
+                  "    pm.response.to.have.status(415);",
+                  "});",
+                  "pm.test('Error message is clear', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.detail).to.include('Unsupported file type');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "description": "Select any non-PDF/DOCX file (e.g. a .txt file) to trigger the 415 error",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/upload/document",
+              "host": ["{{base_url}}"],
+              "path": ["upload", "document"]
+            },
+            "description": "Should return 415 when uploading a .txt or any unsupported file type. Only PDF and DOCX are accepted."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /upload/document — file too large",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 413 for oversized file', () => {",
+                  "    pm.response.to.have.status(413);",
+                  "});",
+                  "pm.test('Error message mentions size limit', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.detail).to.include('5 MB');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "description": "Select a PDF or DOCX file larger than 5 MB to trigger the 413 error",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/upload/document",
+              "host": ["{{base_url}}"],
+              "path": ["upload", "document"]
+            },
+            "description": "Should return 413 when uploading a file larger than 5 MB."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "description": "FastAPI server base URL"
+    },
+    {
+      "key": "session_id",
+      "value": "",
+      "description": "Auto-populated after POST /interview/start"
+    },
+    {
+      "key": "resume_text",
+      "value": "",
+      "description": "Auto-populated after POST /upload/document"
+    }
+  ]
+}
