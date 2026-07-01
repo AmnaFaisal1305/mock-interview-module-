@@ -1,8 +1,8 @@
 # CareerPilot
 
-AI-powered mock interview platform with real-time voice, automated scoring, and PDF reports.
+AI-powered mock interview platform with real-time voice and automated scoring.
 
-Candidates speak with an AI interviewer over a live voice call. After the call ends, the system scores every answer, generates written feedback, and produces a downloadable PDF report — all automatically.
+Candidates speak with an AI interviewer over a live voice call. After the call ends, the system scores every answer and generates a structured JSON report — per-question scores, strengths, gaps, recommendations, and a hiring signal. The frontend uses this JSON to render results and generate a PDF.
 
 ---
 
@@ -43,7 +43,6 @@ careerpilot/
 │   ├── upload.py           # POST /upload/document — PDF/DOCX text extraction
 │   ├── db.py               # MongoDB read/write helpers
 │   ├── r2.py               # Cloudflare R2 presigned URL generation
-│   ├── pdf_report.py       # PDF report generator (fpdf2)
 │   └── token_helper.py     # LiveKit JWT token generation
 │
 ├── bot/
@@ -62,12 +61,14 @@ careerpilot/
 │       ├── holistic.py     # Full-session assessment via Groq
 │       └── schemas.py      # Pydantic models for scoring output + report
 │
-├── logs/                   # Bot subprocess log files (one per session)
-├── test_client.html        # Browser test client for joining a LiveKit room
+├── logs/                               # Bot subprocess log files (one per session)
+├── test_client.html                    # Browser test client for joining a LiveKit room
+├── careerpilot.postman_collection.json # Postman collection — import to test all endpoints
 ├── requirements.txt
-├── API_DOCS.md             # Full API reference
-├── FRONTEND_API.md         # Frontend integration guide (JS examples)
-└── GUIDE.md                # System architecture deep-dive
+├── API_DOCS.md                         # Full API reference
+├── FRONTEND_API.md                     # Frontend integration guide (JS examples)
+├── SETUP.md                            # Backend setup guide for frontend developers
+└── GUIDE.md                            # System architecture deep-dive
 ```
 
 ---
@@ -87,7 +88,6 @@ careerpilot/
 
 ```bash
 pip install -r requirements.txt
-pip install fastapi uvicorn pymongo[srv] certifi openai groq
 ```
 
 ### Environment variables
