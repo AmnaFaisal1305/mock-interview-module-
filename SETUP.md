@@ -57,7 +57,6 @@ You should see `(venv)` in your terminal prompt.
 
 ```bash
 pip install -r requirements.txt
-pip install fastapi uvicorn pymongo[srv] certifi openai
 ```
 
 ---
