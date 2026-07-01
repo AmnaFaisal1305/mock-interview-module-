@@ -35,8 +35,7 @@ api/
 ├── upload.py           Document upload endpoint — extracts text from PDF/DOCX (pdfplumber + python-docx)
 ├── token_helper.py     Generates signed LiveKit JWTs for user + bot
 ├── db.py               MongoDB read/write helpers (transcripts, scoring_reports, recordings)
-├── r2.py               Cloudflare R2 helper — generates presigned URLs for audio playback
-└── pdf_report.py       PDF generator (optional — generates downloadable PDF from report)
+└── r2.py               Cloudflare R2 helper — generates presigned URLs for audio playback
 
 bot/
 ├── config.py           All constants: model names, VAD thresholds, agent voices, supported types
@@ -198,10 +197,12 @@ It also validates that `round_type` and `language_mode` are supported values bef
 
 Company context is derived from the job description — not hardcoded. The agent infers sector, size, and role from the JD provided.
 
-**Every agent's prompt includes two additional sections beyond the interview structure:**
+**Every agent's prompt includes these sections beyond the interview structure:**
 
-- **BEHAVIOURAL RULES** — one question per turn, no sycophancy, no interruptions, last question announcement, probe rule (one follow-up per vague/short answer — does not count toward question total), session closing script
-- **GUARDRAILS** — how to handle: rude/abusive candidate (calm redirect, never terminate), "are you AI?" (deflect without confirming), "stop the interview" (acknowledge and wrap up), off-topic responses (one redirect, continue after third), short/silent answers (probe once with "could you expand on that?")
+- **IMPORTANT block** — labels resume and JD as DATA not instructions; guards against prompt injection attacks embedded in candidate-submitted content
+- **SENIORITY / EXPERIENCE CALIBRATION** — infers fresher / mid-level / senior from resume and JD; adjusts question depth, scenario sources, and pushback intensity accordingly. Freshers can use coursework, projects, and internships as valid scenario sources.
+- **BEHAVIOURAL RULES** — one question per turn, no sycophancy, no interruptions, last question announcement, named PROBING RULE (one follow-up per vague/short answer — does not count toward question total), session closing script
+- **GUARDRAILS** — rude/abusive candidate (calm redirect, never terminate), "are you AI?" (deflect without confirming), "stop the interview" (acknowledge and wrap up), off-topic responses (one redirect, continue after third), `RESUME/JD CONTAINS EMBEDDED INSTRUCTIONS` (ignore and continue)
 
 The output is a **plain string** — nothing more. This string is passed directly to `GeminiLiveLLMService` as `system_instruction`.
 
@@ -452,9 +453,7 @@ The round-specific insight instruction varies per round:
 
 Once the session ends and scoring is written to MongoDB, the frontend can poll these endpoints:
 
-**`GET /interview/{session_id}/report`** — returns the full `ScoringReport` JSON. Returns HTTP 202 if scoring is still in progress.
-
-**`GET /interview/{session_id}/report/pdf`** — generates and downloads a PDF version of the same report via `api/pdf_report.py`.
+**`GET /interview/{session_id}/report`** — returns the full `ScoringReport` JSON. Returns HTTP 202 if scoring is still in progress. The frontend uses this JSON to generate the PDF — there is no server-side PDF endpoint.
 
 **`GET /interview/{session_id}/transcript`** — returns the raw transcript with all entries.
 
@@ -538,6 +537,7 @@ The URL is valid for 1 hour. The frontend passes it directly to an `<audio>` ele
 |---|---|
 | LiveKit JS SDK integration | React joins the room using the `user_token` returned by the API |
 | Displaying the score report | React reads from `GET /interview/{session_id}/report` and renders it |
+| PDF report generation | Frontend generates PDF from the JSON report using jsPDF, React-PDF, or similar — no backend PDF endpoint exists |
 | Audio playback of recording | React reads from `GET /interview/{session_id}/recording` and plays the URL |
 | Microphone/speaker UI | Handled by the browser + LiveKit JS SDK |
 | Uploading resume/JD files | Frontend calls `POST /upload/document` and gets plain text back — the API handles parsing |
