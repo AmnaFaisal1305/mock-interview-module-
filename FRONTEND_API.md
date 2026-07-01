@@ -24,8 +24,8 @@
 5. Call ends (bot auto-hangs up)
          │  Poll GET /interview/{session_id}/report
          ▼
-6. Show score report + download PDF + play recording
-         │  GET /report  /report/pdf  /transcript  /recording
+6. Show score report + generate PDF on frontend + play recording
+         │  GET /report  /transcript  /recording
          ▼
 ```
 
@@ -252,33 +252,13 @@ async function waitForReport(sessionId) {
 ---
 
 ### 5. Download PDF Report
-**Use when:** User clicks "Download Report".
 
-```
-GET /interview/{session_id}/report/pdf
-```
+PDF generation is handled **on the frontend** — use the JSON from `GET /report` and render it with a library of your choice (e.g. [jsPDF](https://github.com/parallax/jsPDF), [React-PDF](https://react-pdf.org/), or `window.print()`).
 
-The response is a binary PDF file — handle it like a file download:
-
-```js
-const res = await fetch(`/interview/${sessionId}/report/pdf`);
-if (res.ok) {
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `report_${sessionId.slice(0, 8)}.pdf`;
-  a.click();
-}
-```
-
-**Responses:**
-
-| Code | Meaning |
-|---|---|
-| 200 | `Content-Type: application/pdf` — binary PDF bytes |
-| 202 | Scoring not yet complete |
-| 404 | Session not found |
+The report JSON from step 4 contains everything you need:
+- `overall_score`, `hiring_signal`, `summary_insights`
+- `communication_quality`, `top_recommendations`, `round_specific_insight`
+- `questions[]` — per-question `score`, `score_label`, `strengths`, `gaps`, `suggestion`
 
 ---
 
@@ -406,7 +386,7 @@ GET /health
 
 /results/{session_id}
   ├── Poll GET /report  → show score, hiring_signal, per-question breakdown
-  ├── Button: Download  → GET /report/pdf         → trigger file download
+  ├── Button: Download  → generate PDF from report JSON on frontend
   ├── Tab: Transcript   → GET /transcript          → show conversation
   └── Tab: Recording    → GET /recording           → <audio> player
 ```
@@ -418,6 +398,6 @@ GET /health
 - **Don't store the `user_token`** beyond the session — it expires.
 - **Do store `session_id`** — it's the key to everything after the interview.
 - **Recording URL expires in 1 hour** — always fetch fresh before playback.
-- **PDF is generated on demand** — no need to cache it.
+- **PDF is generated on the frontend** — use the JSON from `/report` with jsPDF, React-PDF, or any PDF library.
 - **The call ends itself** — the AI agent auto-hangs up. You don't need to end it via API.
 - **Text or file for resume/JD** — both work. If the user types their resume, skip the upload step and pass the text directly.

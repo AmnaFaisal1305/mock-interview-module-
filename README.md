@@ -13,7 +13,7 @@ Candidates speak with an AI interviewer over a live voice call. After the call e
 - **Multilingual** — English, Urdu, or Mixed mode (agent mirrors candidate's language)
 - **Automatic scoring** — per-question scores (0–10) + holistic session assessment via Groq
 - **Hiring signal** — Recommend / Consider / Pass derived from overall score
-- **PDF report** — formatted A4 report with scores, strengths, gaps, recommendations
+- **PDF report** — generated on the frontend from the JSON report (scores, strengths, gaps, recommendations)
 - **Audio recording** — full call recorded and stored on Cloudflare R2, playback via presigned URL
 - **Document upload** — candidates can upload PDF or DOCX resume and JD (text extracted server-side)
 
@@ -30,7 +30,6 @@ Candidates speak with an AI interviewer over a live voice call. After the call e
 | Real-time room | LiveKit Cloud |
 | Audio recording | LiveKit Egress → Cloudflare R2 |
 | Database | MongoDB Atlas |
-| PDF generation | fpdf2 |
 | Document parsing | pdfplumber (PDF), python-docx (DOCX) |
 
 ---
@@ -88,7 +87,7 @@ careerpilot/
 
 ```bash
 pip install -r requirements.txt
-pip install fastapi uvicorn pymongo[srv] certifi openai fpdf2 groq
+pip install fastapi uvicorn pymongo[srv] certifi openai groq
 ```
 
 ### Environment variables
@@ -161,9 +160,9 @@ uvicorn api.session:app --host 127.0.0.1 --port 8000
 
 7. Frontend fetches results
         GET /report      → JSON score report
-        GET /report/pdf  → binary PDF (generated on demand)
         GET /transcript  → full conversation
         GET /recording   → presigned R2 URL (1 hr expiry)
+        PDF generated on the frontend from the JSON report
 ```
 
 ---
@@ -175,7 +174,6 @@ uvicorn api.session:app --host 127.0.0.1 --port 8000
 | `POST` | `/upload/document` | Extract text from PDF or DOCX (max 5 MB) |
 | `POST` | `/interview/start` | Start a session — returns LiveKit credentials |
 | `GET` | `/interview/{id}/report` | JSON score report (202 while scoring) |
-| `GET` | `/interview/{id}/report/pdf` | Download PDF report |
 | `GET` | `/interview/{id}/transcript` | Full conversation transcript |
 | `GET` | `/interview/{id}/recording` | Presigned URL to `.ogg` recording |
 | `GET` | `/health` | Server health + active session count |

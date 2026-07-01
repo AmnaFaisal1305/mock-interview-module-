@@ -18,14 +18,12 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from livekit import api as livekit_api
 
 from api.token_helper import generate_livekit_token
 from api.db import read_transcript, read_scoring_report, read_recording
-from api.pdf_report import generate_report_pdf
 from api.r2 import generate_presigned_url
 from api.upload import router as upload_router
 from bot.config import (
@@ -229,30 +227,6 @@ async def get_report(session_id: str):
         raise HTTPException(status_code=404, detail="Report not found for this session_id")
 
     return report
-
-
-# ── GET /interview/{session_id}/report/pdf ───────────────────────────────────
-
-@app.get("/interview/{session_id}/report/pdf")
-async def get_report_pdf(session_id: str):
-    report = read_scoring_report(session_id)
-    if report is None:
-        proc = _active_bots.get(session_id)
-        if proc and proc.poll() is None:
-            raise HTTPException(status_code=202, detail="Scoring not yet complete")
-        raise HTTPException(status_code=404, detail="Report not found for this session_id")
-
-    try:
-        pdf_bytes = generate_report_pdf(report)
-    except Exception as exc:
-        logger.error("PDF generation failed | session_id=%s error=%s", session_id, exc)
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}")
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=report_{session_id[:8]}.pdf"},
-    )
 
 
 # ── GET /interview/{session_id}/transcript ────────────────────────────────────

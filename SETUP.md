@@ -57,7 +57,7 @@ You should see `(venv)` in your terminal prompt.
 
 ```bash
 pip install -r requirements.txt
-pip install fastapi uvicorn pymongo[srv] certifi openai fpdf2
+pip install fastapi uvicorn pymongo[srv] certifi openai
 ```
 
 ---
@@ -159,8 +159,7 @@ Your backend is live at `http://127.0.0.1:8000`.
    Poll GET /interview/{session_id}/report every 4–5s until 200
 
 6. Show results
-   GET /report      → score + feedback JSON
-   GET /report/pdf  → download PDF
+   GET /report      → score + feedback JSON (use this to generate PDF on frontend)
    GET /transcript  → full conversation
    GET /recording   → audio playback URL
 ```

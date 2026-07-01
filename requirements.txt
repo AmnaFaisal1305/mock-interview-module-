@@ -13,3 +13,17 @@ python-dotenv
 # Document parsing (resume/JD upload)
 pdfplumber
 python-docx
+
+# API server
+fastapi
+uvicorn
+python-multipart
+
+# Database + storage
+pymongo[srv]
+certifi
+boto3
+
+# Scoring LLM
+groq
+openai

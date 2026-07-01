@@ -32,7 +32,7 @@ POST /interview/start
   Transcript + Report + Recording saved to MongoDB
         │
         ▼
-GET /report  |  GET /transcript  |  GET /recording  |  GET /report/pdf
+GET /report  |  GET /transcript  |  GET /recording
 ```
 
 ---
@@ -281,40 +281,7 @@ GET http://127.0.0.1:8000/interview/{session_id}/report
 
 ---
 
-### 5. GET /interview/{session_id}/report/pdf
-
-Download the scoring report as a PDF file.
-
-**Request**
-```
-GET http://127.0.0.1:8000/interview/{session_id}/report/pdf
-```
-
-**Response — 200 OK**
-```
-Content-Type: application/pdf
-Content-Disposition: attachment; filename=report_88f0ad6e.pdf
-
-<binary PDF content>
-```
-
-**Response — 202 Accepted** (scoring not yet complete)
-```json
-{
-  "detail": "Scoring not yet complete"
-}
-```
-
-**Response — 404 Not Found**
-```json
-{
-  "detail": "Report not found for this session_id"
-}
-```
-
----
-
-### 6. GET /interview/{session_id}/transcript
+### 5. GET /interview/{session_id}/transcript
 
 Get the full conversation transcript for a session.
 
@@ -353,7 +320,7 @@ GET http://127.0.0.1:8000/interview/{session_id}/transcript
 
 ---
 
-### 7. GET /interview/{session_id}/recording
+### 6. GET /interview/{session_id}/recording
 
 Get a presigned URL to play back the audio recording (`.ogg` format, hosted on Cloudflare R2). URL expires in 1 hour.
 
@@ -445,9 +412,6 @@ curl http://127.0.0.1:8000/interview/{session_id}/transcript
 
 # Recording URL
 curl http://127.0.0.1:8000/interview/{session_id}/recording
-
-# PDF report (save to file)
-curl http://127.0.0.1:8000/interview/{session_id}/report/pdf -o report.pdf
 ```
 
 > **Note:** Report, transcript, and recording are only available **after the session ends**. While the bot is running, `/report` returns 202 and `/transcript`/`/recording` return 404.
