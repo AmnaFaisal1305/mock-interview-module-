@@ -184,6 +184,9 @@
 <div class="panel hidden" id="panel_room">
   <h3 style="margin-top:0">Step 3 — Live Interview Room</h3>
   <p style="font-size:13px;color:#888;margin:0 0 12px">Mic is on. Wait for the bot to greet you, then answer naturally. The bot will end the call when done.</p>
+  <button class="btn btn-primary" id="btn_enable_audio" onclick="enableAudio()" style="margin-top:0;margin-bottom:12px">
+    🔊 Click to Enable Audio
+  </button>
   <div id="audio_container"></div>
   <div class="meta" id="room_meta"></div>
   <button class="btn btn-danger" id="btn_leave" onclick="leaveRoom()">Leave Room Early</button>
@@ -353,9 +356,17 @@ async function connectLiveKit(lkUrl, token) {
         el.muted = false;
         el.volume = 1.0;
         document.getElementById("audio_container").appendChild(el);
-        // Chrome blocks autoplay on dynamically created audio — force play()
         el.play().catch(() => {});
-        log("Bot audio connected — wait for the greeting, then answer questions.", "ok");
+      }
+    });
+
+    room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, () => {
+      if (!room.canPlaybackAudio) {
+        document.getElementById("btn_enable_audio").style.display = "";
+        log("⚠️ Audio blocked by browser — click \"Enable Audio\" button above to hear the bot.", "err");
+      } else {
+        document.getElementById("btn_enable_audio").style.display = "none";
+        log("Connected! Mic is ON.\nWait for the bot to greet you, then answer naturally.\nThe bot will end the call when it's done.", "ok");
       }
     });
 
@@ -372,6 +383,15 @@ async function connectLiveKit(lkUrl, token) {
 
   } catch (e) {
     log(`LiveKit connection failed: ${e.message}`, "err");
+  }
+}
+
+// ── Enable audio (Chrome autoplay workaround) ─────────────────────────────────
+async function enableAudio() {
+  if (room) {
+    await room.startAudio();
+    document.getElementById("btn_enable_audio").style.display = "none";
+    log("Connected! Mic is ON.\nWait for the bot to greet you, then answer naturally.\nThe bot will end the call when it's done.", "ok");
   }
 }
 
