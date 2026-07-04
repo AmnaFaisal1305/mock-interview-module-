@@ -400,7 +400,12 @@ curl -X POST http://127.0.0.1:8000/interview/start \
 Save the `session_id` from the response.
 
 ### Step 2 — Join the interview
-Open `test_client.html` in the browser, enter the `user_token` and `livekit_url`, and join the room. Speak with the bot agent until it says goodbye and ends the call.
+Serve and open the browser test client:
+```bash
+python -m http.server 5500 --bind 127.0.0.1
+# then open http://127.0.0.1:5500/test_client.html in Chrome
+```
+The test client handles everything — paste or upload your resume/JD, fill the form, click "Start Interview". It calls `POST /interview/start` automatically, joins the LiveKit room, and connects the bot audio. Speak with the agent until it says goodbye and ends the call.
 
 ### Step 3 — Fetch results
 ```bash
@@ -420,9 +425,10 @@ curl http://127.0.0.1:8000/interview/{session_id}/recording
 
 ## Postman Collection
 
-A ready-to-use Postman collection **"CareerPilot API"** is available in **VOXA's Workspace** on Postman.
+A ready-to-use Postman collection is included in the repo as `careerpilot.postman_collection.json`. Import it into any Postman account via **File → Import**.
 
 - `{{base_url}}` collection variable defaults to `http://127.0.0.1:8000`
 - Running `POST /interview/start` automatically saves `{{session_id}}` for all subsequent requests
+- Running `POST /upload/document` automatically saves `{{resume_text}}` for use in start
 - All result endpoints use `{{session_id}}` — no manual copy-paste needed
 - Test scripts validate status codes and response shapes on every request

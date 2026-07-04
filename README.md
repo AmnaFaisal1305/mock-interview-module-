@@ -62,7 +62,7 @@ careerpilot/
 │       └── schemas.py      # Pydantic models for scoring output + report
 │
 ├── logs/                               # Bot subprocess log files (one per session)
-├── test_client.html                    # Browser test client for joining a LiveKit room
+├── test_client.html                    # Browser test client — full flow: upload/paste docs, start interview, live room, results
 ├── careerpilot.postman_collection.json # Postman collection — import to test all endpoints
 ├── requirements.txt
 ├── API_DOCS.md                         # Full API reference
@@ -220,10 +220,15 @@ For non-English sessions, Groq translates Q&A pairs to English during scoring so
 
 ## Local Testing
 
-A browser-based test client is included:
+A browser-based test client (`test_client.html`) is included that covers the full flow:
 
-1. Start the server
-2. Call `POST /interview/start` to get a `user_token`
-3. Open `test_client.html` in Chrome
-4. Paste the token and connect — speak with the AI agent
-5. After the call ends, poll `GET /interview/{session_id}/report`
+1. Start the backend: `uvicorn api.session:app --host 127.0.0.1 --port 8000`
+2. Serve the HTML file (Chrome blocks `file://` URLs):
+   ```bash
+   python -m http.server 5500 --bind 127.0.0.1
+   ```
+3. Open `http://127.0.0.1:5500/test_client.html` in Chrome
+4. **Step 1** — Upload a PDF/DOCX resume and JD, or switch to "Paste text" and type directly
+5. **Step 2** — Fill in candidate name, round type, language, number of questions
+6. **Step 3** — Click "Start Interview" — the client calls `POST /interview/start`, joins LiveKit, and the bot greets you automatically
+7. **Step 4** — After the call ends, the client polls for the score report and renders it inline along with transcript and recording buttons
