@@ -50,17 +50,48 @@ Content-Type: multipart/form-data
 |---|---|---|
 | `file` | File | PDF or DOCX — max 5 MB |
 
+> **Trigger this on file select (`onChange`), not on form submit.** This way the PDF is parsed in the background while the user fills in the rest of the form. By the time they click "Start Interview", the text is already ready — zero extra wait.
+
 **Example (JavaScript):**
 ```js
-const formData = new FormData();
-formData.append('file', fileInput.files[0]);
+let resumeText = null;
+let jdText     = null;
 
-const res = await fetch('http://127.0.0.1:8000/upload/document', {
-  method: 'POST',
-  body: formData,
-});
-const data = await res.json();
-// data.text → pass this as "resume" or "job_description" in step 2
+async function handleFileSelect(file, type) {
+  // type = 'resume' | 'jd'
+  const formData = new FormData();
+  formData.append('file', file);  // send the raw file — don't set Content-Type header
+
+  // Show a loading indicator here ("Parsing…")
+  const res  = await fetch('http://127.0.0.1:8000/upload/document', {
+    method: 'POST',
+    body: formData,
+  });
+  const data = await res.json();
+
+  if (!res.ok) {
+    // Show error to user: data.detail
+    return;
+  }
+
+  // Show confirmation: `${data.word_count} words extracted`
+  if (type === 'resume') resumeText = data.text;
+  else                   jdText     = data.text;
+
+  // Enable "Start Interview" button once both files are parsed + form is filled
+  checkReady();
+}
+
+// Wire up to your file input
+resumeInput.addEventListener('change', e => handleFileSelect(e.target.files[0], 'resume'));
+jdInput.addEventListener('change',     e => handleFileSelect(e.target.files[0], 'jd'));
+
+// Then in POST /interview/start — pass the stored text, not the file
+body: JSON.stringify({
+  resume:          resumeText,   // text extracted by the backend
+  job_description: jdText,
+  // ... other fields
+})
 ```
 
 **Success — 200:**

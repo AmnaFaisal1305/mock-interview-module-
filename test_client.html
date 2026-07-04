@@ -4,102 +4,388 @@
 <meta charset="UTF-8">
 <title>CareerPilot — Test Client</title>
 <style>
-  body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; background: #0f0f0f; color: #e0e0e0; }
-  h2 { color: #7c6aff; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { font-family: sans-serif; max-width: 740px; margin: 40px auto; padding: 0 20px; background: #0f0f0f; color: #e0e0e0; }
+  h2 { color: #7c6aff; margin-bottom: 4px; }
+  h3 { color: #aaa; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin: 28px 0 10px; }
   label { display: block; margin-top: 14px; font-size: 13px; color: #aaa; }
-  input, textarea { width: 100%; padding: 8px; margin-top: 4px; background: #1e1e1e; border: 1px solid #333; color: #fff; border-radius: 6px; box-sizing: border-box; }
-  textarea { height: 80px; font-size: 12px; }
-  button { margin-top: 18px; padding: 10px 24px; background: #7c6aff; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; }
-  button:disabled { background: #444; cursor: default; }
-  #status { margin-top: 16px; padding: 10px; border-radius: 6px; background: #1e1e1e; font-size: 13px; white-space: pre-wrap; min-height: 40px; }
-  #status.ok   { border-left: 3px solid #4caf50; }
-  #status.err  { border-left: 3px solid #f44336; }
-  #status.info { border-left: 3px solid #7c6aff; }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%; padding: 8px 10px; margin-top: 4px;
+    background: #1e1e1e; border: 1px solid #333; color: #fff;
+    border-radius: 6px; font-size: 14px;
+  }
+  textarea { height: 70px; font-size: 12px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* file upload boxes */
+  .file-box {
+    margin-top: 4px; padding: 14px 12px;
+    background: #1a1a2e; border: 1.5px dashed #444; border-radius: 8px;
+    cursor: pointer; transition: border-color .2s;
+  }
+  .file-box:hover { border-color: #7c6aff; }
+  .file-box input[type=file] { display: none; }
+  .file-box .hint { font-size: 12px; color: #666; margin-top: 4px; }
+  .file-box .label-btn {
+    display: inline-block; padding: 5px 12px; background: #2a2a40;
+    border: 1px solid #555; border-radius: 5px; font-size: 13px; color: #ccc; cursor: pointer;
+  }
+  .file-box .label-btn:hover { border-color: #7c6aff; color: #fff; }
+
+  /* upload status chips */
+  .chip { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .chip.ok  { background: #1b3a2a; color: #4caf50; }
+  .chip.err { background: #3a1b1b; color: #f44336; }
+  .chip.loading { background: #2a2a1b; color: #ffc107; }
+
+  /* buttons */
+  .btn { display: inline-block; margin-top: 20px; padding: 11px 26px; border: none; border-radius: 7px; cursor: pointer; font-size: 15px; font-weight: 600; }
+  .btn-primary { background: #7c6aff; color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #6a58e8; }
+  .btn-danger  { background: #c0392b; color: #fff; margin-left: 10px; }
+  .btn-danger:hover:not(:disabled)  { background: #a93226; }
+  .btn:disabled { background: #333; color: #666; cursor: default; }
+
+  /* log panel */
+  #log {
+    margin-top: 20px; padding: 12px 14px; border-radius: 8px;
+    background: #1e1e1e; font-size: 13px; white-space: pre-wrap;
+    min-height: 44px; border-left: 3px solid #7c6aff;
+  }
+  #log.ok  { border-color: #4caf50; }
+  #log.err { border-color: #f44336; }
+
+  /* section panels */
+  .panel {
+    margin-top: 28px; padding: 18px 16px;
+    background: #141414; border: 1px solid #222; border-radius: 10px;
+  }
+  .panel.hidden { display: none; }
+
+  /* results table */
+  .score-bar { height: 8px; background: #333; border-radius: 4px; margin-top: 4px; }
+  .score-bar-fill { height: 100%; border-radius: 4px; background: #7c6aff; }
+  .q-row { padding: 10px 0; border-bottom: 1px solid #222; font-size: 13px; }
+  .q-row:last-child { border-bottom: none; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+  .badge-recommend { background: #1b3a2a; color: #4caf50; }
+  .badge-consider   { background: #2a2a1b; color: #ffc107; }
+  .badge-pass       { background: #3a1b1b; color: #f44336; }
   audio { margin-top: 12px; width: 100%; }
+
+  hr { border: none; border-top: 1px solid #222; margin: 24px 0; }
+  .meta { font-size: 12px; color: #555; margin-top: 6px; }
 </style>
 </head>
 <body>
 
 <h2>CareerPilot — Test Client</h2>
-<p style="font-size:13px;color:#888">Paste the values returned by POST /interview/start, then click Connect.</p>
+<p class="meta">Upload files → fill form → Start Interview. PDF/DOCX conversion happens the moment you pick a file.</p>
 
-<label>LiveKit URL</label>
-<input id="lk_url" value="wss://mock-interview-6jl67ty0.livekit.cloud" />
+<!-- ── Step 1: Upload Documents ─────────────────────────────────────────── -->
+<h3>Step 1 — Upload Documents</h3>
 
-<label>User Token (from API response)</label>
-<textarea id="lk_token" placeholder="Paste user_token here..."></textarea>
+<div class="row">
+  <div>
+    <label>Resume <span style="color:#555">(PDF or DOCX, max 5 MB)</span></label>
+    <div class="file-box" onclick="document.getElementById('resume_file').click()">
+      <label class="label-btn">Choose file…</label>
+      <input type="file" id="resume_file" accept=".pdf,.docx,.doc" onchange="uploadFile(this, 'resume')">
+      <div class="hint" id="resume_name">No file selected</div>
+      <div id="resume_chip"></div>
+    </div>
+  </div>
+  <div>
+    <label>Job Description <span style="color:#555">(PDF or DOCX, max 5 MB)</span></label>
+    <div class="file-box" onclick="document.getElementById('jd_file').click()">
+      <label class="label-btn">Choose file…</label>
+      <input type="file" id="jd_file" accept=".pdf,.docx,.doc" onchange="uploadFile(this, 'jd')">
+      <div class="hint" id="jd_name">No file selected</div>
+      <div id="jd_chip"></div>
+    </div>
+  </div>
+</div>
 
-<button id="btn_connect" onclick="connect()">Connect &amp; Start Interview</button>
-<button id="btn_leave" onclick="leave()" disabled style="background:#c0392b;margin-left:10px">Leave Room</button>
+<!-- ── Step 2: Interview Form ────────────────────────────────────────────── -->
+<h3>Step 2 — Interview Details</h3>
 
-<div id="status" class="info">Waiting to connect...</div>
-<div id="audio_container"></div>
+<label>Candidate Name</label>
+<input type="text" id="candidate_name" placeholder="Ali Khan" oninput="checkReady()" />
+
+<div class="row">
+  <div>
+    <label>Round Type</label>
+    <select id="round_type">
+      <option value="hr">HR</option>
+      <option value="technical">Technical</option>
+      <option value="cultural">Cultural</option>
+      <option value="negotiation">Negotiation</option>
+    </select>
+  </div>
+  <div>
+    <label>Language</label>
+    <select id="language">
+      <option value="english">English</option>
+      <option value="urdu">Urdu</option>
+      <option value="mixed">Mixed</option>
+    </select>
+  </div>
+</div>
+
+<label>Number of Questions <span style="color:#555">(1–15)</span></label>
+<input type="number" id="num_questions" value="5" min="1" max="15" />
+
+<label>Backend URL</label>
+<input type="text" id="base_url" value="http://127.0.0.1:8000" />
+
+<button class="btn btn-primary" id="btn_start" onclick="startInterview()" disabled>
+  Start Interview
+</button>
+
+<div id="log">Waiting — upload both files and fill in candidate name to begin.</div>
+
+<!-- ── Step 3: Live Room ──────────────────────────────────────────────────── -->
+<div class="panel hidden" id="panel_room">
+  <h3 style="margin-top:0">Step 3 — Live Interview Room</h3>
+  <p style="font-size:13px;color:#888;margin:0 0 12px">Mic is on. Wait for the bot to greet you, then answer naturally. The bot will end the call when done.</p>
+  <div id="audio_container"></div>
+  <div class="meta" id="room_meta"></div>
+  <button class="btn btn-danger" id="btn_leave" onclick="leaveRoom()">Leave Room Early</button>
+</div>
+
+<!-- ── Step 4: Results ────────────────────────────────────────────────────── -->
+<div class="panel hidden" id="panel_results">
+  <h3 style="margin-top:0">Step 4 — Results</h3>
+  <div id="results_content"><em style="color:#666">Waiting for scoring to complete…</em></div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <script>
-let room = null;
 
-function log(msg, type="info") {
-  const el = document.getElementById("status");
+// ── State ────────────────────────────────────────────────────────────────────
+let resumeText = null;
+let jdText     = null;
+let sessionId  = null;
+let room       = null;
+let pollTimer  = null;
+
+// ── Logging ──────────────────────────────────────────────────────────────────
+function log(msg, type = "info") {
+  const el = document.getElementById("log");
   el.className = type;
   el.textContent = msg;
-  console.log(msg);
 }
 
-async function connect() {
-  const url   = document.getElementById("lk_url").value.trim();
-  const token = document.getElementById("lk_token").value.trim();
+// ── Upload on file select ────────────────────────────────────────────────────
+async function uploadFile(input, type) {
+  const file = input.files[0];
+  if (!file) return;
 
-  if (!url || !token) { log("Fill in both fields first.", "err"); return; }
+  const nameEl = document.getElementById(type === "resume" ? "resume_name" : "jd_name");
+  const chipEl = document.getElementById(type === "resume" ? "resume_chip" : "jd_chip");
 
-  document.getElementById("btn_connect").disabled = true;
-  log("Connecting to LiveKit...", "info");
+  nameEl.textContent = file.name;
+  chipEl.innerHTML   = '<span class="chip loading">⏳ Parsing…</span>';
+
+  const base = document.getElementById("base_url").value.trim();
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res  = await fetch(`${base}/upload/document`, { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (!res.ok) {
+      chipEl.innerHTML = `<span class="chip err">✗ ${data.detail || "Upload failed"}</span>`;
+      if (type === "resume") resumeText = null;
+      else                   jdText     = null;
+    } else {
+      chipEl.innerHTML = `<span class="chip ok">✓ ${data.word_count} words extracted</span>`;
+      if (type === "resume") resumeText = data.text;
+      else                   jdText     = data.text;
+    }
+  } catch (e) {
+    chipEl.innerHTML = `<span class="chip err">✗ Network error</span>`;
+    if (type === "resume") resumeText = null;
+    else                   jdText     = null;
+  }
+
+  checkReady();
+}
+
+// ── Enable Start button when everything is ready ──────────────────────────────
+function checkReady() {
+  const name = document.getElementById("candidate_name").value.trim();
+  document.getElementById("btn_start").disabled = !(resumeText && jdText && name);
+}
+
+// ── Start Interview ───────────────────────────────────────────────────────────
+async function startInterview() {
+  const base = document.getElementById("base_url").value.trim();
+  document.getElementById("btn_start").disabled = true;
+  log("Starting interview session…", "info");
+
+  try {
+    const res = await fetch(`${base}/interview/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resume:          resumeText,
+        job_description: jdText,
+        candidate_name:  document.getElementById("candidate_name").value.trim(),
+        round_type:      document.getElementById("round_type").value,
+        num_questions:   parseInt(document.getElementById("num_questions").value, 10),
+        language:        document.getElementById("language").value,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      log(`Failed to start: ${data.detail || JSON.stringify(data)}`, "err");
+      document.getElementById("btn_start").disabled = false;
+      return;
+    }
+
+    sessionId = data.session_id;
+    document.getElementById("room_meta").textContent =
+      `Session: ${sessionId}  |  Room: ${data.room_name}`;
+    document.getElementById("panel_room").classList.remove("hidden");
+
+    await connectLiveKit(data.livekit_url, data.user_token);
+
+  } catch (e) {
+    log(`Network error: ${e.message}`, "err");
+    document.getElementById("btn_start").disabled = false;
+  }
+}
+
+// ── Connect to LiveKit room ───────────────────────────────────────────────────
+async function connectLiveKit(lkUrl, token) {
+  log("Connecting to LiveKit…", "info");
 
   try {
     room = new LivekitClient.Room({
-      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true }
+      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true },
     });
 
-    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, pub, participant) => {
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
       if (track.kind === LivekitClient.Track.Kind.Audio) {
         const el = track.attach();
         el.autoplay = true;
         document.getElementById("audio_container").appendChild(el);
-        log(`Bot audio connected — you should hear the bot now.`, "ok");
+        log("Bot audio connected — wait for the greeting, then answer questions.", "ok");
       }
     });
 
-    room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => {
-      log(`Participant joined: ${p.identity}`, "info");
-    });
-
     room.on(LivekitClient.RoomEvent.Disconnected, () => {
-      log("Disconnected from room. Check MongoDB Atlas for transcript + score.", "info");
+      log("Call ended. Scoring is running — fetching your report…", "info");
       document.getElementById("btn_leave").disabled = true;
-      document.getElementById("btn_connect").disabled = false;
+      startPollingReport();
     });
 
-    await room.connect(url, token);
+    await room.connect(lkUrl, token);
     await room.localParticipant.setMicrophoneEnabled(true);
 
-    log(`Connected! Room: ${room.name}\nMic is ON — wait for the bot to greet you, then answer questions.\nClick "Leave Room" when done.`, "ok");
-    document.getElementById("btn_leave").disabled = false;
+    log(`Connected! Mic is ON.\nWait for the bot to greet you, then answer naturally.\nThe bot will end the call when it's done.`, "ok");
 
-  } catch(e) {
-    log(`Connection failed: ${e.message}`, "err");
-    document.getElementById("btn_connect").disabled = false;
+  } catch (e) {
+    log(`LiveKit connection failed: ${e.message}`, "err");
   }
 }
 
-async function leave() {
-  if (room) {
-    await room.disconnect();
-    room = null;
-  }
-  document.getElementById("btn_leave").disabled = true;
-  document.getElementById("btn_connect").disabled = false;
-  log("Left the room. Scoring is running in background.\nCheck Atlas or GET /interview/{session_id}/report in Swagger.", "ok");
+// ── Leave room manually ───────────────────────────────────────────────────────
+async function leaveRoom() {
+  if (room) { await room.disconnect(); room = null; }
 }
+
+// ── Poll for report ───────────────────────────────────────────────────────────
+function startPollingReport() {
+  document.getElementById("panel_results").classList.remove("hidden");
+  const base = document.getElementById("base_url").value.trim();
+
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`${base}/interview/${sessionId}/report`);
+      if (res.status === 200) {
+        clearInterval(pollTimer);
+        const data = await res.json();
+        renderReport(data);
+      } else if (res.status !== 202) {
+        clearInterval(pollTimer);
+        document.getElementById("results_content").innerHTML =
+          `<span style="color:#f44336">Could not fetch report (${res.status}).</span>`;
+      }
+    } catch (e) { /* keep polling */ }
+  }, 4000);
+}
+
+// ── Render report ─────────────────────────────────────────────────────────────
+function renderReport(r) {
+  const signalClass = {
+    Recommend: "badge-recommend",
+    Consider:  "badge-consider",
+    Pass:      "badge-pass",
+  }[r.hiring_signal] || "badge-consider";
+
+  const qs = (r.questions || []).map((q, i) => `
+    <div class="q-row">
+      <strong>Q${i + 1}:</strong> ${q.question || q.question_en || "—"}<br>
+      <span style="color:#888">A: ${(q.answer || q.answer_en || "—").slice(0, 200)}…</span><br>
+      <span style="color:#7c6aff">Score: ${q.score}/10</span>
+      ${q.score_label ? `<span style="color:#555"> · ${q.score_label}</span>` : ""}
+    </div>
+  `).join("");
+
+  const recs = (r.top_recommendations || []).map(t => `<li>${t}</li>`).join("");
+
+  document.getElementById("results_content").innerHTML = `
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+      <span style="font-size:36px;font-weight:700;color:#7c6aff">${r.overall_score ?? "—"}</span>
+      <span>/10</span>
+      <span class="badge ${signalClass}">${r.hiring_signal || "—"}</span>
+    </div>
+
+    <div class="score-bar"><div class="score-bar-fill" style="width:${(r.overall_score || 0) * 10}%"></div></div>
+
+    <p style="font-size:13px;color:#ccc;margin-top:14px">${r.summary_insights || ""}</p>
+
+    ${recs ? `<h3>Recommendations</h3><ul style="font-size:13px;color:#ccc;padding-left:18px">${recs}</ul>` : ""}
+    ${qs   ? `<h3>Per-Question Breakdown</h3>${qs}` : ""}
+
+    <hr>
+    <button class="btn btn-primary" style="margin-top:0" onclick="fetchTranscript()">Load Transcript</button>
+    <button class="btn btn-primary" style="margin-top:0;margin-left:10px" onclick="fetchRecording()">Load Recording</button>
+
+    <div id="extra_results" style="margin-top:16px"></div>
+  `;
+}
+
+// ── Transcript ────────────────────────────────────────────────────────────────
+async function fetchTranscript() {
+  const base = document.getElementById("base_url").value.trim();
+  const res  = await fetch(`${base}/interview/${sessionId}/transcript`);
+  const data = await res.json();
+  const turns = (data.entries || data.turns || []).map(t =>
+    `<div class="q-row"><strong style="color:${t.role==="agent"||t.role==="bot"?"#7c6aff":"#4caf50"}">${t.role}:</strong> ${t.content || t.text}</div>`
+  ).join("");
+  document.getElementById("extra_results").innerHTML =
+    `<h3>Transcript</h3>${turns || "<em style='color:#666'>No turns found.</em>"}`;
+}
+
+// ── Recording ─────────────────────────────────────────────────────────────────
+async function fetchRecording() {
+  const base = document.getElementById("base_url").value.trim();
+  const res  = await fetch(`${base}/interview/${sessionId}/recording`);
+  if (!res.ok) {
+    document.getElementById("extra_results").innerHTML =
+      `<span style="color:#f44336">Recording not available yet.</span>`;
+    return;
+  }
+  const data = await res.json();
+  document.getElementById("extra_results").innerHTML =
+    `<h3>Recording</h3><audio controls src="${data.url}"></audio>`;
+}
+
 </script>
 </body>
 </html>
