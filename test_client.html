@@ -350,7 +350,11 @@ async function connectLiveKit(lkUrl, token) {
       if (track.kind === LivekitClient.Track.Kind.Audio) {
         const el = track.attach();
         el.autoplay = true;
+        el.muted = false;
+        el.volume = 1.0;
         document.getElementById("audio_container").appendChild(el);
+        // Chrome blocks autoplay on dynamically created audio — force play()
+        el.play().catch(() => {});
         log("Bot audio connected — wait for the greeting, then answer questions.", "ok");
       }
     });
