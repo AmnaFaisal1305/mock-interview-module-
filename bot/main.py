@@ -283,21 +283,19 @@ async def run_bot(args: argparse.Namespace) -> None:
     )
     runner = WorkerRunner(handle_sigint=True)
 
-    # ── Greeting trigger — fires when the human participant connects ──────────
-    @transport.event_handler("on_participant_connected")
-    async def on_participant_connected(transport_obj, participant) -> None:
-        identity = getattr(participant, "identity", str(participant))
-        if identity == "bot":
-            return
+    # ── Greeting trigger ──────────────────────────────────────────────────────
+    # _greeting_triggered prevents double-firing if both on_participant_connected
+    # and the fallback timer happen to fire close together.
+    _greeting_state: dict = {"triggered": False}
 
-        logger.info(
-            "User connected, triggering greeting | identity=%s session_id=%s",
-            identity, args.session_id,
-        )
+    async def _trigger_greeting(source: str) -> None:
+        if _greeting_state["triggered"]:
+            return
+        _greeting_state["triggered"] = True
+
+        logger.info("Greeting trigger source=%s | session_id=%s", source, args.session_id)
 
         # Wait up to 60 s for the Gemini WebSocket session to be established.
-        # Gemini retries up to 3 times with backoff on DNS/network failures —
-        # 5 s was not enough when the initial connection attempt fails.
         for _ in range(600):
             if llm._session:
                 break
@@ -308,18 +306,11 @@ async def run_bot(args: argparse.Namespace) -> None:
 
         # In realtime_service_mode=True, LLMContextAggregatorPair never pushes an
         # initial LLMContextFrame at startup (only after completed user turns).
-        # That leaves llm._context = None and _ready_for_realtime_input = False,
-        # which blocks both the greeting and all subsequent user audio.
-        # Fix both directly before triggering the greeting:
+        # Fix both directly before triggering the greeting.
         if llm._context is None:
-            llm._context = context           # prevent NoneType crash in adapter calls
-        llm._ready_for_realtime_input = True  # allow user audio to reach Gemini
+            llm._context = context
+        llm._ready_for_realtime_input = True
 
-        # Push the greeting trigger through the pipeline so it reaches
-        # GeminiLiveLLMService.process_frame → _create_single_response →
-        # send_client_content(turn_complete=True) → Gemini speaks.
-        # _ready_for_realtime_input is already True above, so user replies
-        # will flow to Gemini after the greeting.
         from pipecat.frames.frames import LLMMessagesAppendFrame
         from pipecat.processors.frame_processor import FrameDirection
         greeting_frame = LLMMessagesAppendFrame(messages=[
@@ -327,6 +318,28 @@ async def run_bot(args: argparse.Namespace) -> None:
         ])
         await user_aggregator.push_frame(greeting_frame, FrameDirection.DOWNSTREAM)
         logger.info("Greeting triggered | session_id=%s", args.session_id)
+
+    @transport.event_handler("on_participant_connected")
+    async def on_participant_connected(transport_obj, participant) -> None:
+        identity = getattr(participant, "identity", str(participant))
+        if identity == "bot":
+            return
+        logger.info(
+            "User connected via event | identity=%s session_id=%s",
+            identity, args.session_id,
+        )
+        await _trigger_greeting(source="on_participant_connected")
+
+    # Fallback: if the user was already in the room when the bot joined,
+    # on_participant_connected never fires. After 4 s (enough for the pipeline
+    # and Gemini session to be ready), trigger the greeting if not already done.
+    async def _greeting_fallback() -> None:
+        await asyncio.sleep(4)
+        if not _greeting_state["triggered"]:
+            logger.info("Fallback greeting (user already in room) | session_id=%s", args.session_id)
+            await _trigger_greeting(source="fallback")
+
+    asyncio.create_task(_greeting_fallback())
 
     # ── Single-fire session end (prevents double _end_session calls) ─────────
     async def _end_session_once() -> None:
