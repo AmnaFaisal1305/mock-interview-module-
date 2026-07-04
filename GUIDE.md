@@ -210,12 +210,30 @@ The output is a **plain string** — nothing more. This string is passed directl
 
 ### Step 5 — User Connects, Interview Begins  →  `bot/main.py` event handlers
 
-When the React frontend uses the `user_token` to join the LiveKit room, Pipecat fires `on_participant_connected`.
+When the React frontend uses the `user_token` to join the LiveKit room, the bot greets the candidate. There is a timing race: the bot subprocess takes 2–3 seconds to start after `POST /interview/start` returns, but the frontend connects to LiveKit immediately on receiving the token. By the time Pipecat is running, the user is already in the room — `on_participant_connected` only fires for participants who join *after* the bot, so it never fires in this case.
 
-**`on_participant_connected` handler:**
-1. Waits up to **60 seconds** for the Gemini WebSocket session to be established (Gemini retries up to 3 times with backoff on network failures)
+To handle both orderings reliably, greeting dispatch uses a **`_greeting_state` guard + 4-second fallback**:
+
+```
+Bot starts
+ ├── Registers on_participant_connected handler
+ ├── Schedules _greeting_fallback() task (fires after 4 s)
+ │
+ ├── [Path A] User joined AFTER bot (rare):
+ │     on_participant_connected fires → _trigger_greeting("on_participant_connected")
+ │     _greeting_state["triggered"] = True
+ │     Fallback fires at 4 s but sees triggered=True → no-op
+ │
+ └── [Path B] User already in room when bot starts (typical):
+       on_participant_connected never fires
+       Fallback fires at 4 s → _trigger_greeting("fallback")
+       _greeting_state["triggered"] = True
+```
+
+**`_trigger_greeting()` shared logic** (called by either path, guarded to run only once):
+1. Waits up to **60 seconds** for the Gemini WebSocket session to be established (polls every 100 ms)
 2. Sets `llm._ready_for_realtime_input = True` so Gemini starts accepting audio from the user
-3. Pushes a greeting trigger frame through the pipeline → Gemini speaks its intro
+3. Pushes a `LLMMessagesAppendFrame` with `"Please begin the interview by introducing yourself."` through the pipeline → Gemini speaks its greeting
 
 **Transcript collection — two event handlers:**
 
@@ -528,6 +546,37 @@ The URL is valid for 1 hour. The frontend passes it directly to an `<audio>` ele
 | `R2_ACCESS_KEY_ID` | `api/session.py`, `api/r2.py` | R2 API access key |
 | `R2_SECRET_ACCESS_KEY` | `api/session.py`, `api/r2.py` | R2 API secret key |
 | `R2_BUCKET_NAME` | `api/session.py`, `api/r2.py` | R2 bucket name (`careerpilot-recordings`) |
+
+---
+
+## Chrome Audio Policy — Frontend Requirements
+
+Chrome blocks audio playback until the user has interacted with the page (the **autoplay policy**). If the LiveKit audio track starts before a user gesture has unlocked the `AudioContext`, the browser silently drops it.
+
+`test_client.html` handles this with three layers:
+
+1. **`AudioContext` unlock inside the Start Interview click handler** — the click is itself a user gesture, so creating and resuming an `AudioContext` there satisfies Chrome's requirement before any audio arrives:
+   ```javascript
+   async function startInterview() {
+     try { const _ctx = new AudioContext(); await _ctx.resume(); } catch(_) {}
+     // ... rest of function
+   }
+   ```
+
+2. **`el.play()` after attaching the remote audio track** — forces the browser to begin playing the element immediately after the track is attached:
+   ```javascript
+   room.on(RoomEvent.TrackSubscribed, (track, _pub, _participant) => {
+     if (track.kind === 'audio') {
+       const el = track.attach();
+       document.body.appendChild(el);
+       el.play().catch(() => {});
+     }
+   });
+   ```
+
+3. **Manual "Enable Audio" button** — if LiveKit fires `AudioPlaybackStatusChanged` with a blocked state (fallback for edge cases), a button appears that calls `room.startAudio()` on click.
+
+**When building the React frontend:** call `new AudioContext(); await ctx.resume()` inside whatever click/tap handler triggers the LiveKit room join. Never rely on audio starting automatically on page load.
 
 ---
 
