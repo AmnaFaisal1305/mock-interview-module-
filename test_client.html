@@ -302,6 +302,9 @@ function checkReady() {
 
 // ── Start Interview ───────────────────────────────────────────────────────────
 async function startInterview() {
+  // Unlock Chrome's AudioContext inside the click handler (user gesture required)
+  try { const _ctx = new AudioContext(); await _ctx.resume(); } catch(_) {}
+
   const base = document.getElementById("base_url").value.trim();
   document.getElementById("btn_start").disabled = true;
   log("Starting interview session…", "info");
