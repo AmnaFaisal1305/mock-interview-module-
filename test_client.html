@@ -75,33 +75,69 @@
 
   hr { border: none; border-top: 1px solid #222; margin: 24px 0; }
   .meta { font-size: 12px; color: #555; margin-top: 6px; }
+
+  /* file/text tabs */
+  .tab-row { display: flex; gap: 6px; margin-top: 8px; margin-bottom: 6px; }
+  .tab {
+    padding: 4px 12px; font-size: 12px; border-radius: 5px; border: 1px solid #444;
+    background: transparent; color: #888; cursor: pointer;
+  }
+  .tab:hover { border-color: #7c6aff; color: #ccc; }
+  .tab.active { background: #2a2a40; border-color: #7c6aff; color: #fff; }
 </style>
 </head>
 <body>
 
 <h2>CareerPilot — Test Client</h2>
-<p class="meta">Upload files → fill form → Start Interview. PDF/DOCX conversion happens the moment you pick a file.</p>
+<p class="meta">Upload a file <strong>or</strong> paste text — fill form → Start Interview. File parsing happens the moment you pick a file.</p>
 
 <!-- ── Step 1: Upload Documents ─────────────────────────────────────────── -->
-<h3>Step 1 — Upload Documents</h3>
+<h3>Step 1 — Resume &amp; Job Description</h3>
 
 <div class="row">
+  <!-- Resume -->
   <div>
-    <label>Resume <span style="color:#555">(PDF or DOCX, max 5 MB)</span></label>
-    <div class="file-box" onclick="document.getElementById('resume_file').click()">
-      <label class="label-btn">Choose file…</label>
-      <input type="file" id="resume_file" accept=".pdf,.docx,.doc" onchange="uploadFile(this, 'resume')">
-      <div class="hint" id="resume_name">No file selected</div>
-      <div id="resume_chip"></div>
+    <label>Resume</label>
+    <div class="tab-row">
+      <button class="tab active" onclick="switchTab('resume','file',this)">Upload file</button>
+      <button class="tab" onclick="switchTab('resume','text',this)">Paste text</button>
+    </div>
+
+    <div id="resume_file_panel">
+      <div class="file-box" onclick="document.getElementById('resume_file').click()">
+        <label class="label-btn">Choose file… <span style="color:#555;font-weight:400">(PDF / DOCX, max 5 MB)</span></label>
+        <input type="file" id="resume_file" accept=".pdf,.docx,.doc" onchange="uploadFile(this, 'resume')">
+        <div class="hint" id="resume_name">No file selected</div>
+        <div id="resume_chip"></div>
+      </div>
+    </div>
+
+    <div id="resume_text_panel" style="display:none">
+      <textarea id="resume_textarea" placeholder="Paste resume text here…" oninput="handleTextInput('resume')"></textarea>
+      <div id="resume_text_chip"></div>
     </div>
   </div>
+
+  <!-- Job Description -->
   <div>
-    <label>Job Description <span style="color:#555">(PDF or DOCX, max 5 MB)</span></label>
-    <div class="file-box" onclick="document.getElementById('jd_file').click()">
-      <label class="label-btn">Choose file…</label>
-      <input type="file" id="jd_file" accept=".pdf,.docx,.doc" onchange="uploadFile(this, 'jd')">
-      <div class="hint" id="jd_name">No file selected</div>
-      <div id="jd_chip"></div>
+    <label>Job Description</label>
+    <div class="tab-row">
+      <button class="tab active" onclick="switchTab('jd','file',this)">Upload file</button>
+      <button class="tab" onclick="switchTab('jd','text',this)">Paste text</button>
+    </div>
+
+    <div id="jd_file_panel">
+      <div class="file-box" onclick="document.getElementById('jd_file').click()">
+        <label class="label-btn">Choose file… <span style="color:#555;font-weight:400">(PDF / DOCX, max 5 MB)</span></label>
+        <input type="file" id="jd_file" accept=".pdf,.docx,.doc" onchange="uploadFile(this, 'jd')">
+        <div class="hint" id="jd_name">No file selected</div>
+        <div id="jd_chip"></div>
+      </div>
+    </div>
+
+    <div id="jd_text_panel" style="display:none">
+      <textarea id="jd_textarea" placeholder="Paste job description text here…" oninput="handleTextInput('jd')"></textarea>
+      <div id="jd_text_chip"></div>
     </div>
   </div>
 </div>
@@ -174,6 +210,48 @@ function log(msg, type = "info") {
   const el = document.getElementById("log");
   el.className = type;
   el.textContent = msg;
+}
+
+// ── Tab switching (file vs text) ─────────────────────────────────────────────
+function switchTab(type, mode, btn) {
+  const filePanel = document.getElementById(`${type}_file_panel`);
+  const textPanel = document.getElementById(`${type}_text_panel`);
+  const tabs      = btn.closest('.tab-row').querySelectorAll('.tab');
+
+  tabs.forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+
+  if (mode === 'file') {
+    filePanel.style.display = '';
+    textPanel.style.display = 'none';
+    // clear text state so file takes over
+    if (type === 'resume') resumeText = null;
+    else                   jdText     = null;
+  } else {
+    filePanel.style.display = 'none';
+    textPanel.style.display = '';
+    // re-read textarea in case user already typed
+    handleTextInput(type);
+  }
+  checkReady();
+}
+
+// ── Textarea fallback ────────────────────────────────────────────────────────
+function handleTextInput(type) {
+  const val     = document.getElementById(`${type}_textarea`).value.trim();
+  const chipEl  = document.getElementById(`${type}_text_chip`);
+  const wordCnt = val ? val.split(/\s+/).filter(Boolean).length : 0;
+
+  if (val.length >= 10) {
+    if (type === 'resume') resumeText = val;
+    else                   jdText     = val;
+    chipEl.innerHTML = `<span class="chip ok">✓ ${wordCnt} words</span>`;
+  } else {
+    if (type === 'resume') resumeText = null;
+    else                   jdText     = null;
+    chipEl.innerHTML = val.length ? `<span class="chip err">Too short</span>` : '';
+  }
+  checkReady();
 }
 
 // ── Upload on file select ────────────────────────────────────────────────────
