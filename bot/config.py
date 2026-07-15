@@ -3,7 +3,7 @@ import logging
 logger = logging.getLogger("careerpilot.bot")
 
 # ── Model strings ──────────────────────────────────────────────────────────────
-GEMINI_LIVE_MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
+GEMINI_LIVE_MODEL = "models/gemini-3.1-flash-live-preview"
 
 # Scoring uses Groq (independent of the live pipeline)
 GROQ_SCORING_MODEL = "llama-3.3-70b-versatile"

@@ -36,6 +36,7 @@ Page 3: Results
 
 - A form with two document sections (Resume, Job Description)
 - Each document section has two tabs: **Upload file** | **Paste text**
+- The Job Description section also accepts a plain job role title (e.g. "Software Engineer") if no full JD is available
 - Interview settings: candidate name, round type, language, number of questions
 - A **Start Interview** button — disabled until all inputs are ready
 
@@ -139,6 +140,7 @@ async function startInterview() {
       round_type:      roundType,
       num_questions:   numQuestions,
       language:        language,
+      user_id:         currentUserId,   // from your auth system — omit if not logged in
     }),
   });
 
@@ -542,6 +544,17 @@ OGG audio plays natively in Chrome, Firefox, and Edge. Safari requires a polyfil
 ## Full State Machine
 
 ```
+HISTORY PAGE  (on login — optional, show before SETUP PAGE)
+  ├── GET /user/{userId}/interviews
+  │     → list of past sessions, newest first
+  │     → each card shows: round_type, candidate_name, created_at, overall_score, hiring_signal
+  │
+  ├── Click a past session card
+  │     → navigate to /results/{session_id}
+  │     → load report, transcript, recording on demand
+  │
+  └── "Start New Interview" button → navigate to SETUP PAGE
+
 SETUP PAGE
   ├── resumeText = null, jdText = null
   │     → "Start Interview" button disabled
@@ -562,7 +575,7 @@ SETUP PAGE
   └── Start clicked
         → AudioContext unlocked (internal, invisible to user)
         → show: "Setting up your interview…"
-        → POST /interview/start
+        → POST /interview/start  (include user_id if logged in)
         → sessionId saved internally
         → navigate to INTERVIEW IN PROGRESS PAGE
 
@@ -609,7 +622,11 @@ RESULTS PAGE
 
 **`session_id` is the primary key for everything.** Save it as soon as `POST /interview/start` responds, and keep it available throughout Pages 2 and 3. Put it in the URL so the results page survives a refresh.
 
+**`user_id` links sessions to a user account.** Pass it in `POST /interview/start` (from Firebase, Supabase, Auth0, or whichever auth system the frontend uses). The backend stores a lightweight session index in MongoDB keyed by `user_id`. On login, call `GET /user/{user_id}/interviews` to retrieve the full history — each entry has the `session_id` needed to load report, transcript, and recording.
+
 **Text or file — same result.** The `resume` and `job_description` fields in `POST /interview/start` are always plain text strings — it makes no difference whether they came from an uploaded file or a textarea. The upload endpoint just converts file → text.
+
+**Job role accepted in place of a full JD.** If the user does not have a job description, they can type just a role title (e.g. `"Software Engineer"`, `"Data Analyst"`). The backend detects short single-line input and instructs the AI interviewer to base questions on the resume and general role expectations instead of company-specific JD details.
 
 **The bot ends the call.** You don't need an "End Interview" button (though a "Leave Early" button is useful). The `RoomEvent.Disconnected` event fires in both cases — handle it the same way.
 

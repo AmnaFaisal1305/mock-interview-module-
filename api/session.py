@@ -14,6 +14,8 @@ import subprocess
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
+from api.hot_pool import init_pool, dispatch_session as _pool_dispatch
+
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException
@@ -23,7 +25,13 @@ from pydantic import BaseModel, Field
 from livekit import api as livekit_api
 
 from api.token_helper import generate_livekit_token
-from api.db import read_transcript, read_scoring_report, read_recording
+from api.db import (
+    read_transcript,
+    read_scoring_report,
+    read_recording,
+    write_session_index,
+    read_user_sessions,
+)
 from api.r2 import generate_presigned_url
 from api.upload import router as upload_router
 from bot.config import (
@@ -46,6 +54,8 @@ _active_bots: dict[str, subprocess.Popen] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Pre-warm bot processes in the background so first sessions get fast startup
+    init_pool()
     yield
     for sid, proc in list(_active_bots.items()):
         if proc.poll() is None:
@@ -76,10 +86,11 @@ app.include_router(upload_router)
 class StartInterviewRequest(BaseModel):
     round_type: str = Field(..., description="hr | technical | cultural | negotiation")
     resume: str = Field(..., min_length=10, description="Full resume text")
-    job_description: str = Field(..., min_length=10, description="Full job description text")
+    job_description: str = Field(..., min_length=2, description="Full job description text OR a job role title (e.g. 'Software Engineer')")
     num_questions: int = Field(DEFAULT_QUESTION_COUNT, ge=1, le=15)
     language: str = Field("english", description="english | urdu | mixed")
     candidate_name: str = Field("Candidate", description="Used in bot greeting")
+    user_id: str | None = Field(None, description="Authenticated user ID — links this session to the user's history")
 
 
 class StartInterviewResponse(BaseModel):
@@ -166,33 +177,26 @@ async def start_interview(req: StartInterviewRequest):
     except Exception as exc:
         logger.error("Egress start failed | session_id=%s error=%s — continuing without recording", session_id, exc)
 
-    cmd = [
-        sys.executable, "-u", "-m", "bot.main",
-        "--session_id",      session_id,
-        "--room_name",       room_name,
-        "--bot_token",       bot_token,
-        "--round_type",      req.round_type,
-        "--resume",          req.resume,
-        "--job_description", req.job_description,
-        "--num_questions",   str(req.num_questions),
-        "--language_mode",   req.language,
-    ]
-    if egress_id:
-        cmd += ["--egress_id", egress_id, "--r2_key", r2_key]
-
     logs_dir = os.path.join(os.path.dirname(__file__), "..", "logs")
     os.makedirs(logs_dir, exist_ok=True)
-    log_path = os.path.join(logs_dir, f"bot_{session_id}.log")
+    log_path = os.path.abspath(os.path.join(logs_dir, f"bot_{session_id}.log"))
+
+    session_args = {
+        "session_id":      session_id,
+        "room_name":       room_name,
+        "bot_token":       bot_token,
+        "round_type":      req.round_type,
+        "resume":          req.resume,
+        "job_description": req.job_description,
+        "num_questions":   req.num_questions,
+        "language_mode":   req.language,
+        "egress_id":       egress_id,
+        "r2_key":          r2_key if egress_id else None,
+        "user_id":         req.user_id,
+    }
 
     try:
-        log_file = open(log_path, "w")
-        proc = subprocess.Popen(
-            cmd,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
-        )
+        proc = _pool_dispatch(session_args, log_path)
         _active_bots[session_id] = proc
         logger.info(
             "Bot spawned | session_id=%s room=%s pid=%d round=%s",
@@ -201,6 +205,21 @@ async def start_interview(req: StartInterviewRequest):
     except Exception as exc:
         logger.error("Bot spawn failed | session_id=%s error=%s", session_id, exc)
         raise HTTPException(status_code=500, detail=f"Failed to start bot: {exc}")
+
+    # ── Persist session in user history (if user_id provided) ────────────────
+    if req.user_id:
+        try:
+            write_session_index(
+                user_id=req.user_id,
+                session_id=session_id,
+                round_type=req.round_type,
+                candidate_name=req.candidate_name,
+            )
+        except Exception as exc:
+            logger.error(
+                "Session index write failed (non-fatal) | session_id=%s user_id=%s error=%s",
+                session_id, req.user_id, exc,
+            )
 
     return StartInterviewResponse(
         session_id=session_id,
@@ -257,6 +276,21 @@ async def get_recording(session_id: str):
         "format": doc.get("format", "ogg"),
         "recorded_at": doc.get("recorded_at"),
     }
+
+
+# ── GET /user/{user_id}/interviews ───────────────────────────────────────────
+
+@app.get("/user/{user_id}/interviews")
+async def get_user_interviews(user_id: str):
+    """
+    Returns all past interview sessions for a user, newest first.
+    Each entry includes session_id, round_type, candidate_name, created_at,
+    overall_score, hiring_signal, and scoring_status.
+    Use session_id with /interview/{session_id}/report|transcript|recording
+    to fetch full details for any past session.
+    """
+    sessions = read_user_sessions(user_id)
+    return {"user_id": user_id, "interviews": sessions, "count": len(sessions)}
 
 
 # ── GET /health ───────────────────────────────────────────────────────────────

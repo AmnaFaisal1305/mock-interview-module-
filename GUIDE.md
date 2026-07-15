@@ -34,7 +34,7 @@ api/
 ├── session.py          FastAPI app — the entry point for all HTTP requests
 ├── upload.py           Document upload endpoint — extracts text from PDF/DOCX (pdfplumber + python-docx)
 ├── token_helper.py     Generates signed LiveKit JWTs for user + bot
-├── db.py               MongoDB read/write helpers (transcripts, scoring_reports, recordings)
+├── db.py               MongoDB read/write helpers (sessions, transcripts, scoring_reports, recordings)
 └── r2.py               Cloudflare R2 helper — generates presigned URLs for audio playback
 
 bot/
@@ -98,9 +98,12 @@ The React frontend sends a POST request with:
   "job_description": "We are hiring a backend engineer...",
   "num_questions": 3,
   "language": "english",
-  "candidate_name": "Ahmed"
+  "candidate_name": "Ahmed",
+  "user_id": "firebase_uid_abc123"
 }
 ```
+
+`user_id` is optional — omit it for anonymous sessions. When present, the session is linked to the user's interview history.
 
 `api/session.py` does these things in order:
 
@@ -122,10 +125,12 @@ The React frontend sends a POST request with:
      --language_mode   english
      --egress_id       EG_xxxx         ← only if egress started successfully
      --r2_key          recordings/<uuid>.ogg
+     --user_id         firebase_uid_abc123   ← only if user_id was provided
    ```
    The `-u` flag forces unbuffered output so bot logs appear immediately.
    Bot stdout+stderr are written to `logs/bot_{session_id}.log`.
-7. **Returns** to the frontend:
+7. **Writes a session index entry** to the `sessions` MongoDB collection (only if `user_id` is set) — stores `user_id`, `session_id`, `round_type`, `candidate_name`, `created_at`, and `scoring_status: "pending"`.
+8. **Returns** to the frontend:
    ```json
    {
      "session_id": "abc123",
@@ -180,7 +185,7 @@ Before the pipeline starts, `main.py` calls an agent function to build the syste
 |---|---|
 | `{{AGENT_NAME}}` | The interviewer's fixed name (Amna / Ahmed / Hassan / Ayan) |
 | `{{CANDIDATE_RESUME}}` | The resume text passed from the API |
-| `{{JOB_DESCRIPTION}}` | The job description text |
+| `{{JOB_DESCRIPTION}}` | The job description text, or a formatted note when only a role title was supplied (see `base_agent._prepare_job_description`) |
 | `{{NUM_QUESTIONS}}` | How many questions to ask (e.g. `3`) |
 | `{{LANGUAGE_INSTRUCTION}}` | Instruction like "Conduct in English only" |
 
@@ -195,7 +200,7 @@ It also validates that `round_type` and `language_mode` are supported values bef
 | `cultural_agent.py` | **Hassan**, Culture Lead | Orus (male) | Self-awareness, values alignment, conflict resolution maturity |
 | `negotiation_agent.py` | **Ayan**, Hiring Manager | Fenrir (male) | Makes a salary offer, holds firm for 2 exchanges, tests candidate's confidence and justification |
 
-Company context is derived from the job description — not hardcoded. The agent infers sector, size, and role from the JD provided.
+Company context is derived from the job description — not hardcoded. The agent infers sector, size, and role from the JD provided. If only a job role title was supplied (e.g. `"Software Engineer"`), `base_agent._prepare_job_description()` wraps it in a note instructing the agent to rely on the resume and general role expectations instead.
 
 **Every agent's prompt includes these sections beyond the interview structure:**
 
@@ -304,7 +309,7 @@ Triggered by either `on_participant_disconnected` (user closes browser) or the a
 3. **Writes transcript to MongoDB** — `api.db.write_transcript(session_id, transcript)`
 4. **Stops LiveKit Egress** — calls `lk.egress.stop_egress(egress_id)` → LiveKit finalises and uploads the `.ogg` file to Cloudflare R2
 5. **Writes recording metadata to MongoDB** — `api.db.write_recording(session_id, egress_id, r2_key)` — stores the R2 key so the frontend can retrieve a playback URL later
-6. **Awaits scoring** — calls `await _run_scoring_async(...)` — keeps the process alive until scoring and the MongoDB write are both complete
+6. **Awaits scoring** — calls `await _run_scoring_async(...)` — keeps the process alive until scoring and the MongoDB write are both complete. After `write_scoring_report` succeeds, calls `api.db.update_session_index_score(session_id, overall_score, hiring_signal, scoring_status)` to patch the `sessions` collection entry with the final score (only if `user_id` was provided at session start).
 
 > **Important:** The scoring is `await`-ed (not `asyncio.create_task`). The bot process must not exit before the scoring report is written to MongoDB.
 
@@ -316,12 +321,15 @@ There is also a **20-minute watchdog timer** (`MAX_SESSION_DURATION = 1200s`) th
 
 **`api/db.py`** — used by both the bot subprocess (to write) and the FastAPI server (to read).
 
-Write side (bot):
+Write side (bot / API):
+- `write_session_index(user_id, session_id, round_type, candidate_name)` — called by `api/session.py` on start; upserts into `sessions` collection with `scoring_status: "pending"`
+- `update_session_index_score(session_id, overall_score, hiring_signal, scoring_status)` — called by `bot/main.py` after scoring; patches `sessions` entry with final score
 - `write_transcript(session_id, transcript)` — upserts into `transcripts` collection
 - `write_scoring_report(session_id, report)` — upserts into `scoring_reports` collection
 - `write_recording(session_id, egress_id, r2_key)` — upserts into `recordings` collection
 
 Read side (API):
+- `read_user_sessions(user_id)` → list of all session summaries for a user, sorted newest-first
 - `read_transcript(session_id)` → full transcript document or `None`
 - `read_scoring_report(session_id)` → full report document or `None`
 - `read_recording(session_id)` → recording metadata or `None`
@@ -329,9 +337,12 @@ Read side (API):
 Connection uses a **lazy singleton** — the `MongoClient` is created once on first use. Uses `certifi` for SSL certificate validation (required by Python 3.14 on Windows connecting to MongoDB Atlas).
 
 Collections in MongoDB Atlas (`CareerPilot` database):
+- `sessions` — one lightweight document per session (when `user_id` provided): `user_id`, `session_id`, `round_type`, `candidate_name`, `created_at`, `scoring_status`, `overall_score`, `hiring_signal`. Used by `GET /user/{user_id}/interviews`.
 - `transcripts` — one document per session, all raw conversation entries
 - `scoring_reports` — one document per session, full structured scoring report
 - `recordings` — one document per session, R2 key + egress ID + format + timestamp
+
+> **MongoDB index recommendation:** Add a `user_id` index on the `sessions` collection in Atlas for efficient history queries at scale: `db.sessions.createIndex({ user_id: 1, created_at: -1 })`
 
 **`api/r2.py`** — Cloudflare R2 helper. The actual audio file is uploaded directly by LiveKit Egress — this module only generates **presigned GET URLs** for the frontend to stream the recording.
 
@@ -591,7 +602,8 @@ Chrome blocks audio playback until the user has interacted with the page (the **
 | Microphone/speaker UI | Handled by the browser + LiveKit JS SDK |
 | Uploading resume/JD files | Frontend calls `POST /upload/document` and gets plain text back — the API handles parsing |
 
-The bot produces three outputs:
+The bot produces three outputs, and the API produces one index update:
 1. **Transcript** → written to MongoDB `transcripts` collection
 2. **Scoring report** → written to MongoDB `scoring_reports` collection
 3. **Audio recording** → uploaded to Cloudflare R2, metadata in MongoDB `recordings` collection
+4. **Session index patch** → `sessions` collection updated with `overall_score`, `hiring_signal`, `scoring_status` (only when `user_id` was provided at session start)

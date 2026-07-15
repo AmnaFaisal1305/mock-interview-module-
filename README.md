@@ -25,7 +25,7 @@ Candidates speak with an AI interviewer over a live voice call. After the call e
 |---|---|
 | API server | FastAPI + Uvicorn |
 | Voice pipeline | Pipecat 1.4.0 |
-| AI voice (STT + LLM + TTS) | Google Gemini Live (`gemini-2.5-flash-native-audio-preview`) |
+| AI voice (STT + LLM + TTS) | Google Gemini Live (`gemini-3.1-flash-live-preview`) |
 | Scoring LLM | Groq (`llama-3.3-70b-versatile`) |
 | Real-time room | LiveKit Cloud |
 | Audio recording | LiveKit Egress → Cloudflare R2 |
@@ -41,7 +41,7 @@ careerpilot/
 ├── api/
 │   ├── session.py          # FastAPI app — all HTTP endpoints
 │   ├── upload.py           # POST /upload/document — PDF/DOCX text extraction
-│   ├── db.py               # MongoDB read/write helpers
+│   ├── db.py               # MongoDB read/write helpers (sessions, transcripts, scoring_reports, recordings)
 │   ├── r2.py               # Cloudflare R2 presigned URL generation
 │   └── token_helper.py     # LiveKit JWT token generation
 │
@@ -134,8 +134,9 @@ uvicorn api.session:app --host 127.0.0.1 --port 8000
         Returns extracted plain text
 
 2. Frontend starts an interview session
-        POST /interview/start
+        POST /interview/start  (include user_id to link session to user account)
         Server: creates LiveKit room → starts Egress recording → spawns bot subprocess
+                → writes session index to MongoDB (sessions collection)
         Returns: session_id, livekit_url, user_token
 
 3. Frontend joins the LiveKit room using user_token
@@ -154,6 +155,7 @@ uvicorn api.session:app --host 127.0.0.1 --port 8000
               ├── Per-question: score + strengths + gaps + suggestion + English translation
               └── Holistic: overall score + hiring signal + summary + recommendations
               Write scoring report → MongoDB
+              Patch session index → MongoDB (sessions collection — adds score + hiring signal)
 
 6. Frontend polls GET /interview/{session_id}/report
         202 while scoring runs → 200 when ready
@@ -176,6 +178,7 @@ uvicorn api.session:app --host 127.0.0.1 --port 8000
 | `GET` | `/interview/{id}/report` | JSON score report (202 while scoring) |
 | `GET` | `/interview/{id}/transcript` | Full conversation transcript |
 | `GET` | `/interview/{id}/recording` | Presigned URL to `.ogg` recording |
+| `GET` | `/user/{user_id}/interviews` | All past sessions for a user — newest first |
 | `GET` | `/health` | Server health + active session count |
 
 Full API reference: [`API_DOCS.md`](API_DOCS.md)  

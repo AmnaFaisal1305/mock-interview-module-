@@ -2,12 +2,15 @@
 MongoDB helpers for CareerPilot.
 
 Collections:
+  sessions         — one lightweight index doc per session, keyed by user_id
   transcripts      — raw conversation entries per session
-  scoring_reports  — Gemini Flash score report per session
+  scoring_reports  — full score report per session
+  recordings       — R2 key + egress metadata per session
 
 Called by:
-  bot/main.py      → write_transcript, write_scoring_report
-  api/session.py   → read_transcript, read_scoring_report (for report endpoint)
+  bot/main.py      → write_transcript, write_scoring_report, update_session_index_score
+  api/session.py   → write_session_index, read_user_sessions,
+                     read_transcript, read_scoring_report, read_recording
 """
 
 import os
@@ -37,6 +40,88 @@ def _get_db():
         logger.info("MongoDB client created | db=%s", db_name)
 
     return _client[db_name]
+
+
+# ── Session index (user → sessions mapping) ───────────────────────────────────
+
+def write_session_index(
+    user_id: str,
+    session_id: str,
+    round_type: str,
+    candidate_name: str,
+) -> None:
+    """
+    Creates a lightweight session entry in the `sessions` collection when an
+    interview starts.  Scoring results are patched in later via
+    update_session_index_score() once the bot finishes scoring.
+    """
+    try:
+        db = _get_db()
+        db.sessions.update_one(
+            {"session_id": session_id},
+            {
+                "$set": {
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "round_type": round_type,
+                    "candidate_name": candidate_name,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "scoring_status": "pending",
+                }
+            },
+            upsert=True,
+        )
+        logger.info("Session index written | user_id=%s session_id=%s", user_id, session_id)
+    except PyMongoError as exc:
+        logger.error("write_session_index failed | session_id=%s error=%s", session_id, exc)
+        raise
+
+
+def update_session_index_score(
+    session_id: str,
+    overall_score: float,
+    hiring_signal: str,
+    scoring_status: str,
+) -> None:
+    """Patches scoring results into the session index entry after scoring completes."""
+    try:
+        db = _get_db()
+        db.sessions.update_one(
+            {"session_id": session_id},
+            {
+                "$set": {
+                    "overall_score": overall_score,
+                    "hiring_signal": hiring_signal,
+                    "scoring_status": scoring_status,
+                }
+            },
+        )
+        logger.info(
+            "Session index score updated | session_id=%s score=%.1f signal=%s",
+            session_id, overall_score, hiring_signal,
+        )
+    except PyMongoError as exc:
+        logger.error("update_session_index_score failed | session_id=%s error=%s", session_id, exc)
+
+
+def read_user_sessions(user_id: str) -> list[dict]:
+    """
+    Returns all session index documents for a user, sorted newest-first.
+    Each document contains: session_id, round_type, candidate_name, created_at,
+    overall_score, hiring_signal, scoring_status.
+    """
+    try:
+        db = _get_db()
+        docs = list(
+            db.sessions.find(
+                {"user_id": user_id},
+                {"_id": 0},
+            ).sort("created_at", -1)
+        )
+        return docs
+    except PyMongoError as exc:
+        logger.error("read_user_sessions failed | user_id=%s error=%s", user_id, exc)
+        return []
 
 
 # ── Write functions (called by bot/main.py) ───────────────────────────────────

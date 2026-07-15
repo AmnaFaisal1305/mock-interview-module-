@@ -24,9 +24,11 @@ from datetime import datetime, timezone
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.processors.aggregators.llm_response_universal import (
     AssistantTurnStoppedMessage,
     LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
     UserTurnMessageAddedMessage,
     UserTurnStoppedMessage,
 )
@@ -73,6 +75,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--session_id", required=True)
     parser.add_argument("--egress_id", required=False, default=None)
     parser.add_argument("--r2_key", required=False, default=None)
+    parser.add_argument("--user_id", required=False, default=None)
     return parser.parse_args()
 
 
@@ -132,6 +135,9 @@ async def run_bot(args: argparse.Namespace) -> None:
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
         realtime_service_mode=True,
+        user_params=LLMUserAggregatorParams(
+            vad_analyzer=SileroVADAnalyzer(),
+        ),
     )
 
     # ── Transcript capture ─────────────────────────────────────────────────────
@@ -334,7 +340,7 @@ async def run_bot(args: argparse.Namespace) -> None:
     # on_participant_connected never fires. After 4 s (enough for the pipeline
     # and Gemini session to be ready), trigger the greeting if not already done.
     async def _greeting_fallback() -> None:
-        await asyncio.sleep(4)
+        await asyncio.sleep(0)
         if not _greeting_state["triggered"]:
             logger.info("Fallback greeting (user already in room) | session_id=%s", args.session_id)
             await _trigger_greeting(source="fallback")
@@ -446,6 +452,7 @@ async def _end_session(
         job_description=args.job_description,
         round_type=args.round_type,
         language_mode=args.language_mode,
+        user_id=args.user_id,
     )
 
     logger.info(
@@ -460,6 +467,7 @@ async def _run_scoring_async(
     job_description: str,
     round_type: str,
     language_mode: str = "english",
+    user_id: str | None = None,
 ) -> None:
     try:
         loop = asyncio.get_event_loop()
@@ -474,9 +482,17 @@ async def _run_scoring_async(
         )
 
         try:
-            from api.db import write_scoring_report  # type: ignore[import]
+            from api.db import write_scoring_report, update_session_index_score  # type: ignore[import]
             write_scoring_report(session_id=session_id, report=report)
             logger.info("Scoring report written to MongoDB | session_id=%s", session_id)
+
+            if user_id:
+                update_session_index_score(
+                    session_id=session_id,
+                    overall_score=report.get("overall_score", 0.0),
+                    hiring_signal=report.get("hiring_signal", ""),
+                    scoring_status=report.get("scoring_status", "failed"),
+                )
         except ImportError:
             logger.warning(
                 "api.db not found — skipping scoring report write (local test mode) | session_id=%s",

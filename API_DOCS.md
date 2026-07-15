@@ -30,9 +30,13 @@ POST /interview/start
   Bot says goodbye → auto-hangup
   Scoring runs (Groq)
   Transcript + Report + Recording saved to MongoDB
+  Session index updated with score + hiring_signal (sessions collection)
         │
         ▼
 GET /report  |  GET /transcript  |  GET /recording
+        │
+        ▼
+GET /user/{user_id}/interviews  (lists all past sessions for the user)
 ```
 
 ---
@@ -152,9 +156,10 @@ Content-Type: application/json
 | `round_type` | string | ✅ | `hr` \| `technical` \| `cultural` \| `negotiation` |
 | `candidate_name` | string | ✅ | Used in the bot's greeting. Default: `"Candidate"` |
 | `resume` | string | ✅ | Full resume text (min 10 chars) |
-| `job_description` | string | ✅ | Full JD text (min 10 chars) |
+| `job_description` | string | ✅ | Full JD text **or** a job role title (e.g. `"Software Engineer"`) — min 2 chars |
 | `num_questions` | integer | ❌ | Number of questions (1–15). Default: `5` |
 | `language` | string | ❌ | `english` \| `urdu` \| `mixed`. Default: `english` |
+| `user_id` | string | ❌ | Authenticated user ID from your auth system — links this session to the user's interview history. Omit for anonymous sessions. |
 
 **Agent names are fixed server-side:**
 
@@ -351,6 +356,63 @@ GET http://127.0.0.1:8000/interview/{session_id}/recording
   "detail": "Recording not found for this session_id"
 }
 ```
+
+---
+
+### 7. GET /user/{user_id}/interviews
+
+Get all past interview sessions for a user account, newest first. Use this to build a history page after the user logs in.
+
+**Request**
+```
+GET http://127.0.0.1:8000/user/{user_id}/interviews
+```
+
+**Path Parameter**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `user_id` | string | The user ID passed to `POST /interview/start` |
+
+**Response — 200 OK**
+```json
+{
+  "user_id": "firebase_uid_abc123",
+  "count": 2,
+  "interviews": [
+    {
+      "session_id": "88f0ad6e-ae6a-4087-ad8f-dec4dd3b771d",
+      "round_type": "hr",
+      "candidate_name": "Ali Khan",
+      "created_at": "2026-07-14T10:00:00Z",
+      "scoring_status": "complete",
+      "overall_score": 7.4,
+      "hiring_signal": "Consider"
+    },
+    {
+      "session_id": "3d625fef-1234-5678-abcd-ef0123456789",
+      "round_type": "technical",
+      "candidate_name": "Ali Khan",
+      "created_at": "2026-07-10T14:30:00Z",
+      "scoring_status": "complete",
+      "overall_score": 8.1,
+      "hiring_signal": "Recommend"
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `session_id` | string | Use with `/interview/{session_id}/report`, `/transcript`, `/recording` |
+| `round_type` | string | Interview round type |
+| `candidate_name` | string | Name submitted at session start |
+| `created_at` | string | ISO 8601 timestamp of when the interview started |
+| `scoring_status` | string | `pending` while interview is in progress · `complete` · `partial` · `failed` |
+| `overall_score` | float | 0.0–10.0 — only present once scoring is complete |
+| `hiring_signal` | string | `Recommend` / `Consider` / `Pass` — only present once scoring is complete |
+
+> Sessions where `user_id` was not provided in `POST /interview/start` will not appear here.
 
 ---
 

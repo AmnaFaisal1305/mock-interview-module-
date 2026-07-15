@@ -143,9 +143,10 @@ Content-Type: application/json
 | `round_type` | string | ✅ | `hr` `technical` `cultural` `negotiation` | — |
 | `candidate_name` | string | ✅ | Any name — used in greeting | `"Candidate"` |
 | `resume` | string | ✅ | Plain text (from upload or typed) | — |
-| `job_description` | string | ✅ | Plain text (from upload or typed) | — |
+| `job_description` | string | ✅ | Full JD text **or** a job role title (e.g. `"Software Engineer"`) — from upload, typed, or just the role name | — |
 | `num_questions` | integer | ❌ | 1–15 | `5` |
 | `language` | string | ❌ | `english` `urdu` `mixed` | `english` |
+| `user_id` | string | ❌ | Authenticated user ID from your auth system (Firebase UID, Supabase UUID, etc.). Include this to link the session to the user's history. Omit for anonymous sessions. | `null` |
 
 > **Agent names and voices are fixed** — the frontend cannot set them.  
 > HR → Amna, Technical → Ahmed, Cultural → Hassan, Negotiation → Ayan
@@ -387,6 +388,54 @@ GET /health
 
 ---
 
+### 9. Get User Interview History
+**Use when:** User logs in — fetch their past interviews to show a history page.
+
+```
+GET /user/{user_id}/interviews
+```
+
+**Example (JavaScript):**
+```js
+async function getUserHistory(userId) {
+  const res = await fetch(`${BASE_URL}/user/${userId}/interviews`);
+  const data = await res.json();
+  // data.interviews — array of past sessions, newest first
+  return data.interviews;
+}
+```
+
+**Success — 200:**
+```json
+{
+  "user_id": "firebase_uid_abc123",
+  "count": 2,
+  "interviews": [
+    {
+      "session_id": "88f0ad6e-...",
+      "round_type": "hr",
+      "candidate_name": "Ali Khan",
+      "created_at": "2026-07-14T10:00:00Z",
+      "scoring_status": "complete",
+      "overall_score": 7.4,
+      "hiring_signal": "Consider"
+    }
+  ]
+}
+```
+
+Use each entry's `session_id` with `/interview/{session_id}/report`, `/transcript`, and `/recording` to load the full details for any past session.
+
+> **`scoring_status: "pending"`** means the interview ended but scoring hasn't completed yet. Poll `/interview/{session_id}/report` (202 → 200) for that session.
+
+**Responses:**
+
+| Code | Meaning |
+|---|---|
+| 200 | Always returns 200 — empty `interviews` array if user has no sessions |
+
+---
+
 ## Error Handling — Quick Reference
 
 | Code | What happened | What to show |
@@ -404,11 +453,14 @@ GET /health
 ## Suggested Page Flow
 
 ```
+/history  (on login)
+  └── GET /user/{user_id}/interviews → list of past sessions with scores
+
 /start
   ├── Upload Resume     → POST /upload/document  → save resume_text
   ├── Upload JD         → POST /upload/document  → save jd_text
   ├── Fill form         → round_type, candidate_name, num_questions, language
-  └── Click Start       → POST /interview/start  → save session_id
+  └── Click Start       → POST /interview/start (include user_id) → save session_id
 
 /interview
   ├── Connect to LiveKit room using user_token + livekit_url
