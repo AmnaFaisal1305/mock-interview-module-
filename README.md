@@ -203,7 +203,7 @@ Frontend integration guide: [`FRONTEND_API.md`](FRONTEND_API.md)
 |---|---|
 | `english` | Agent speaks English only regardless of candidate's language |
 | `urdu` | Agent speaks Urdu only regardless of candidate's language |
-| `mixed` | Agent mirrors the candidate — responds in whichever language they use |
+| `mixed` | Natural Urdu-English code-switching — agent always mixes both languages in the same sentence regardless of what language the candidate uses |
 
 For non-English sessions, Groq translates Q&A pairs to English during scoring so the report and PDF are always in English.
 

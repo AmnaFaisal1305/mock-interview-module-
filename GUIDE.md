@@ -35,9 +35,11 @@ api/
 ├── upload.py           Document upload endpoint — extracts text from PDF/DOCX (pdfplumber + python-docx)
 ├── token_helper.py     Generates signed LiveKit JWTs for user + bot
 ├── db.py               MongoDB read/write helpers (sessions, transcripts, scoring_reports, recordings)
+├── hot_pool.py         Hot process pool — pre-warms 2 bot subprocesses at startup; dispatches sessions in ms
 └── r2.py               Cloudflare R2 helper — generates presigned URLs for audio playback
 
 bot/
+├── warm_worker.py      Pre-warmed subprocess entry point — imports everything at startup, then awaits session args via stdin
 ├── config.py           All constants: model names, VAD thresholds, agent voices, supported types
 ├── main.py             Bot entry point — builds pipeline, runs live session, triggers scoring
 ├── transcript.py       TranscriptCollector — stores every word said during the interview
@@ -112,23 +114,7 @@ The React frontend sends a POST request with:
 3. **Calls `api/token_helper.py`** twice — one JWT for the user (goes to React), one JWT for the bot (passed to subprocess)
 4. **Pre-creates the LiveKit room** via LiveKit Room API — required before starting egress
 5. **Starts LiveKit Egress** — begins audio-only recording (`OGG` format) that streams directly to Cloudflare R2 at key `recordings/{session_id}.ogg`. Returns an `egress_id`.
-6. **Spawns `bot/main.py` as a subprocess** using `subprocess.Popen`:
-   ```
-   python -u -m bot.main
-     --session_id      <uuid>
-     --room_name       interview-<uuid>
-     --bot_token       <jwt>
-     --round_type      hr
-     --resume          "..."
-     --job_description "..."
-     --num_questions   3
-     --language_mode   english
-     --egress_id       EG_xxxx         ← only if egress started successfully
-     --r2_key          recordings/<uuid>.ogg
-     --user_id         firebase_uid_abc123   ← only if user_id was provided
-   ```
-   The `-u` flag forces unbuffered output so bot logs appear immediately.
-   Bot stdout+stderr are written to `logs/bot_{session_id}.log`.
+6. **Dispatches a bot session via the hot process pool** (`api/hot_pool.py`). At API startup, `init_pool()` pre-warms 2 `bot.warm_worker` subprocesses — all heavy imports (google-genai, pipecat, silero ONNX) are already loaded. `dispatch_session()` picks a ready process from the queue and sends it JSON args via stdin in milliseconds. The pool replenishes itself after each dispatch. If the pool is empty, it falls back to a cold `subprocess.Popen` of `bot.warm_worker`. Bot stdout+stderr are written to `logs/bot_{session_id}.log`.
 7. **Writes a session index entry** to the `sessions` MongoDB collection (only if `user_id` is set) — stores `user_id`, `session_id`, `round_type`, `candidate_name`, `created_at`, and `scoring_status: "pending"`.
 8. **Returns** to the frontend:
    ```json
