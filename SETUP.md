@@ -16,7 +16,7 @@ You will also need API credentials (get these from the backend team):
 
 | What | Where to get it |
 |---|---|
-| LiveKit URL, API Key, API Secret | LiveKit Cloud project settings |
+| LiveKit URL, API Key, API Secret | LiveKit Cloud project settings, or use self-hosted Docker (see `SELF_HOSTED_LIVEKIT.md`) |
 | Google Gemini API Key | Google AI Studio |
 | Groq API Key | console.groq.com |
 | MongoDB URI + DB name | MongoDB Atlas |
@@ -99,7 +99,7 @@ R2_BUCKET_NAME=your-bucket-name
 ## Step 5 — Run the backend
 
 ```bash
-uvicorn api.session:app --host 127.0.0.1 --port 8000
+python -m uvicorn api.session:app --host 127.0.0.1 --port 8000
 ```
 
 You should see output like:
@@ -174,7 +174,7 @@ You are either not inside the virtual environment or missed a package. Run `pip 
 Check that your `.env` file is in the project root and the URI is correct. The `MONGODB_DB` value must be `CareerPilot` (capital C and P).
 
 **`LIVEKIT_URL not configured`**  
-Make sure `LIVEKIT_URL` is set in `.env` and starts with `wss://`.
+Make sure `LIVEKIT_URL` is set in `.env`. Use `wss://` for LiveKit Cloud, or `ws://localhost:7880` for self-hosted Docker.
 
 **`GOOGLE_API_KEY` errors or bot not speaking**  
 The Gemini Live API requires special access. Confirm the key has Gemini Live enabled in Google AI Studio.

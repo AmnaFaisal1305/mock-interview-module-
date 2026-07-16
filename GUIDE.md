@@ -8,14 +8,15 @@ This document explains every file in the project, what it does, and exactly how 
 
 ```
 PHASE 1 — LIVE INTERVIEW  (real-time, voice)
-   User browser mic ──► LiveKit cloud ──► Bot (Pipecat) ──► Gemini Live API
-                                                                   │
-                                             Gemini does STT + LLM + TTS
-                                                                   │
-   User browser speaker ◄── LiveKit cloud ◄── Bot (Pipecat) ◄──────┘
+   User browser mic ──► LiveKit ──► Bot (Pipecat) ──► Gemini Live API
+                                                              │
+                                        Gemini does STT + LLM + TTS
+                                                              │
+   User browser speaker ◄── LiveKit ◄── Bot (Pipecat) ◄──────┘
 
    Everything said is captured live in TranscriptCollector
    Audio is recorded via LiveKit Egress → uploaded directly to Cloudflare R2
+   (Egress runs as a Docker container alongside LiveKit — see SELF_HOSTED_LIVEKIT.md)
 
 PHASE 2 — SCORING  (runs after user disconnects, text-based)
    TranscriptCollector ──► Groq API (llama-3.3-70b) ──► Score report ──► MongoDB

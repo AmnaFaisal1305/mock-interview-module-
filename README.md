@@ -24,10 +24,10 @@ Candidates speak with an AI interviewer over a live voice call. After the call e
 | Layer | Technology |
 |---|---|
 | API server | FastAPI + Uvicorn |
-| Voice pipeline | Pipecat 1.4.0 |
+| Voice pipeline | Pipecat 1.5.0 |
 | AI voice (STT + LLM + TTS) | Google Gemini Live (`gemini-3.1-flash-live-preview`) |
 | Scoring LLM | Groq (`llama-3.3-70b-versatile`) |
-| Real-time room | LiveKit Cloud |
+| Real-time room | LiveKit (self-hosted via Docker Compose or LiveKit Cloud) |
 | Audio recording | LiveKit Egress → Cloudflare R2 |
 | Database | MongoDB Atlas |
 | Document parsing | pdfplumber (PDF), python-docx (DOCX) |
@@ -78,7 +78,7 @@ careerpilot/
 ### Prerequisites
 
 - Python 3.11+
-- A [LiveKit Cloud](https://livekit.io) project
+- **LiveKit** — either [LiveKit Cloud](https://livekit.io) project, or Docker Desktop for self-hosted (see [`SELF_HOSTED_LIVEKIT.md`](SELF_HOSTED_LIVEKIT.md))
 - A [Google AI Studio](https://aistudio.google.com) API key (Gemini Live access)
 - A [Groq](https://console.groq.com) API key
 - A [MongoDB Atlas](https://www.mongodb.com/atlas) cluster
@@ -121,7 +121,7 @@ R2_BUCKET_NAME=your-bucket-name
 ### Run the server
 
 ```bash
-uvicorn api.session:app --host 127.0.0.1 --port 8000
+python -m uvicorn api.session:app --host 127.0.0.1 --port 8000
 ```
 
 ---
@@ -225,7 +225,7 @@ For non-English sessions, Groq translates Q&A pairs to English during scoring so
 
 A browser-based test client (`test_client.html`) is included that covers the full flow:
 
-1. Start the backend: `uvicorn api.session:app --host 127.0.0.1 --port 8000`
+1. Start the backend: `python -m uvicorn api.session:app --host 127.0.0.1 --port 8000`
 2. Serve the HTML file (Chrome blocks `file://` URLs):
    ```bash
    python -m http.server 5500 --bind 127.0.0.1
