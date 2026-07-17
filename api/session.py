@@ -32,7 +32,7 @@ from api.db import (
     write_session_index,
     read_user_sessions,
 )
-from api.r2 import generate_presigned_url
+from api.s3 import generate_presigned_url
 from api.upload import router as upload_router
 from bot.config import (
     SUPPORTED_ROUND_TYPES,
@@ -134,14 +134,13 @@ async def start_interview(req: StartInterviewRequest):
     # ── Spawn bot process ─────────────────────────────────────────────────────
     vad_threshold = VAD_SILENCE_THRESHOLDS.get(req.round_type, 700)
 
-    # ── Create room + start LiveKit Egress (audio-only recording → Cloudflare R2) ──
+    # ── Create room + start LiveKit Egress (audio-only recording → AWS S3) ──
     # The room must exist before an egress can be attached to it. We pre-create it
     # here so egress can start immediately, before the bot subprocess joins.
     egress_id = None
-    r2_key = f"recordings/{session_id}.ogg"
+    s3_key = f"recordings/{session_id}.ogg"
     try:
         lk_url = livekit_url.replace("wss://", "https://").replace("ws://", "http://")
-        r2_endpoint = f"https://{os.environ.get('R2_ACCOUNT_ID', '')}.r2.cloudflarestorage.com"
         async with livekit_api.LiveKitAPI(
             url=lk_url,
             api_key=os.environ.get("LIVEKIT_API_KEY", ""),
@@ -159,14 +158,12 @@ async def start_interview(req: StartInterviewRequest):
                     file_outputs=[
                         livekit_api.EncodedFileOutput(
                             file_type=livekit_api.OGG,
-                            filepath=r2_key,
+                            filepath=s3_key,
                             s3=livekit_api.S3Upload(
-                                access_key=os.environ.get("R2_ACCESS_KEY_ID", ""),
-                                secret=os.environ.get("R2_SECRET_ACCESS_KEY", ""),
-                                bucket=os.environ.get("R2_BUCKET_NAME", ""),
-                                endpoint=r2_endpoint,
-                                region="auto",
-                                force_path_style=True,
+                                access_key=os.environ.get("AWS_ACCESS_KEY_ID", ""),
+                                secret=os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+                                bucket=os.environ.get("AWS_BUCKET_NAME", ""),
+                                region=os.environ.get("AWS_REGION", "ap-southeast-1"),
                             ),
                         )
                     ],
@@ -191,7 +188,7 @@ async def start_interview(req: StartInterviewRequest):
         "num_questions":   req.num_questions,
         "language_mode":   req.language,
         "egress_id":       egress_id,
-        "r2_key":          r2_key if egress_id else None,
+        "s3_key":          s3_key if egress_id else None,
         "user_id":         req.user_id,
     }
 
@@ -266,7 +263,7 @@ async def get_recording(session_id: str):
     if doc is None:
         raise HTTPException(status_code=404, detail="Recording not found for this session_id")
     try:
-        url = generate_presigned_url(doc["r2_key"])
+        url = generate_presigned_url(doc["s3_key"])
     except Exception as exc:
         logger.error("Presigned URL generation failed | session_id=%s error=%s", session_id, exc)
         raise HTTPException(status_code=500, detail=f"Could not generate recording URL: {exc}")

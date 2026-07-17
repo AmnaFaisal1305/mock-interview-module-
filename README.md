@@ -14,7 +14,7 @@ Candidates speak with an AI interviewer over a live voice call. After the call e
 - **Automatic scoring** — per-question scores (0–10) + holistic session assessment via Groq
 - **Hiring signal** — Recommend / Consider / Pass derived from overall score
 - **PDF report** — generated on the frontend from the JSON report (scores, strengths, gaps, recommendations)
-- **Audio recording** — full call recorded and stored on Cloudflare R2, playback via presigned URL
+- **Audio recording** — full call recorded and stored on AWS S3, playback via presigned URL
 - **Document upload** — candidates can upload PDF or DOCX resume and JD (text extracted server-side)
 
 ---
@@ -28,7 +28,7 @@ Candidates speak with an AI interviewer over a live voice call. After the call e
 | AI voice (STT + LLM + TTS) | Google Gemini Live (`gemini-3.1-flash-live-preview`) |
 | Scoring LLM | Groq (`llama-3.3-70b-versatile`) |
 | Real-time room | LiveKit (self-hosted via Docker Compose or LiveKit Cloud) |
-| Audio recording | LiveKit Egress → Cloudflare R2 |
+| Audio recording | LiveKit Egress → AWS S3 |
 | Database | MongoDB Atlas |
 | Document parsing | pdfplumber (PDF), python-docx (DOCX) |
 
@@ -42,7 +42,7 @@ careerpilot/
 │   ├── session.py          # FastAPI app — all HTTP endpoints
 │   ├── upload.py           # POST /upload/document — PDF/DOCX text extraction
 │   ├── db.py               # MongoDB read/write helpers (sessions, transcripts, scoring_reports, recordings)
-│   ├── r2.py               # Cloudflare R2 presigned URL generation
+│   ├── s3.py               # AWS S3 presigned URL generation
 │   └── token_helper.py     # LiveKit JWT token generation
 │
 ├── bot/
@@ -82,7 +82,7 @@ careerpilot/
 - A [Google AI Studio](https://aistudio.google.com) API key (Gemini Live access)
 - A [Groq](https://console.groq.com) API key
 - A [MongoDB Atlas](https://www.mongodb.com/atlas) cluster
-- A [Cloudflare R2](https://www.cloudflare.com/developer-platform/r2/) bucket
+- An [AWS S3](https://aws.amazon.com/s3/) bucket
 
 ### Install dependencies
 
@@ -110,12 +110,11 @@ GROQ_API_KEY=your_groq_api_key
 MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/?appName=Cluster0
 MONGODB_DB=CareerPilot
 
-# Cloudflare R2
-R2_ACCOUNT_ID=your_account_id
-R2_TOKEN=your_r2_token
-R2_ACCESS_KEY_ID=your_access_key
-R2_SECRET_ACCESS_KEY=your_secret_key
-R2_BUCKET_NAME=your-bucket-name
+# AWS S3
+AWS_REGION=ap-southeast-1
+AWS_ACCESS_KEY_ID=your_access_key_id
+AWS_SECRET_ACCESS_KEY=your_secret_access_key
+AWS_BUCKET_NAME=your-bucket-name
 ```
 
 ### Run the server
@@ -149,7 +148,7 @@ python -m uvicorn api.session:app --host 127.0.0.1 --port 8000
 
 5. Session ends — bot cleanup pipeline
         ├── Write transcript → MongoDB
-        ├── Stop LiveKit Egress → .ogg saved to Cloudflare R2
+        ├── Stop LiveKit Egress → .ogg saved to AWS S3
         ├── Write recording metadata → MongoDB
         └── Run scoring (Groq):
               ├── Per-question: score + strengths + gaps + suggestion + English translation

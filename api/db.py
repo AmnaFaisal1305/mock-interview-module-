@@ -5,7 +5,7 @@ Collections:
   sessions         — one lightweight index doc per session, keyed by user_id
   transcripts      — raw conversation entries per session
   scoring_reports  — full score report per session
-  recordings       — R2 key + egress metadata per session
+  recordings       — S3 key + egress metadata per session
 
 Called by:
   bot/main.py      → write_transcript, write_scoring_report, update_session_index_score
@@ -199,10 +199,10 @@ def read_scoring_report(session_id: str) -> dict | None:
         return None
 
 
-def write_recording(session_id: str, egress_id: str, r2_key: str) -> None:
+def write_recording(session_id: str, egress_id: str, s3_key: str) -> None:
     """
     Saves recording metadata after LiveKit Egress stops.
-    The actual audio file lives in R2 at r2_key — we store only the reference.
+    The actual audio file lives in S3 at s3_key — we store only the reference.
     """
     try:
         db = _get_db()
@@ -212,14 +212,14 @@ def write_recording(session_id: str, egress_id: str, r2_key: str) -> None:
                 "$set": {
                     "session_id": session_id,
                     "egress_id": egress_id,
-                    "r2_key": r2_key,
+                    "s3_key": s3_key,
                     "format": "ogg",
                     "recorded_at": datetime.now(timezone.utc).isoformat(),
                 }
             },
             upsert=True,
         )
-        logger.info("Recording metadata written | session_id=%s r2_key=%s", session_id, r2_key)
+        logger.info("Recording metadata written | session_id=%s s3_key=%s", session_id, s3_key)
     except PyMongoError as exc:
         logger.error("write_recording failed | session_id=%s error=%s", session_id, exc)
         raise

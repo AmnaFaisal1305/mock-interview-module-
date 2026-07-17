@@ -103,7 +103,7 @@ def _cold_spawn(args_dict: dict, log_path: str) -> subprocess.Popen:
         "--language_mode",   args_dict["language_mode"],
     ]
     if args_dict.get("egress_id"):
-        cmd += ["--egress_id", args_dict["egress_id"], "--r2_key", args_dict["r2_key"]]
+        cmd += ["--egress_id", args_dict["egress_id"], "--s3_key", args_dict["s3_key"]]
     if args_dict.get("user_id"):
         cmd += ["--user_id", args_dict["user_id"]]
 

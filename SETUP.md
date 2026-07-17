@@ -20,7 +20,7 @@ You will also need API credentials (get these from the backend team):
 | Google Gemini API Key | Google AI Studio |
 | Groq API Key | console.groq.com |
 | MongoDB URI + DB name | MongoDB Atlas |
-| Cloudflare R2 credentials | Cloudflare dashboard → R2 → API tokens |
+| AWS S3 credentials | AWS IAM console → create an access key with S3 permissions |
 
 ---
 
@@ -82,12 +82,11 @@ GROQ_API_KEY=your_groq_api_key
 MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/?appName=Cluster0
 MONGODB_DB=CareerPilot
 
-# Cloudflare R2 (audio recordings)
-R2_ACCOUNT_ID=your_r2_account_id
-R2_TOKEN=your_r2_token
-R2_ACCESS_KEY_ID=your_r2_access_key_id
-R2_SECRET_ACCESS_KEY=your_r2_secret_access_key
-R2_BUCKET_NAME=your-bucket-name
+# AWS S3 (audio recordings)
+AWS_REGION=ap-southeast-1
+AWS_ACCESS_KEY_ID=your_access_key_id
+AWS_SECRET_ACCESS_KEY=your_secret_access_key
+AWS_BUCKET_NAME=your-bucket-name
 ```
 
 > **Important:** `MONGODB_DB` must be exactly `CareerPilot` — the database name is case-sensitive.

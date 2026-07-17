@@ -7,7 +7,7 @@
 | `AWS_ACCESS_KEY_ID` | IAM user access key ID |
 | `AWS_SECRET_ACCESS_KEY` | IAM user secret access key |
 | `AWS_REGION` | Region where your bucket lives (e.g. `ap-south-1`) |
-| `AWS_S3_BUCKET_NAME` | Name of your S3 bucket |
+| `AWS_BUCKET_NAME` | Name of your S3 bucket |
 
 ---
 
@@ -86,8 +86,8 @@ Required so the browser can stream audio through presigned URLs.
 Remove the old R2 variables and add these four:
 
 ```env
+AWS_REGION=ap-southeast-1
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=ap-south-1
-AWS_S3_BUCKET_NAME=careerpilot-recordings
+AWS_BUCKET_NAME=careerpilot-recordings
 ```

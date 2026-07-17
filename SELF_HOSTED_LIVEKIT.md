@@ -125,7 +125,7 @@ docker compose up -d       # start (or restart after config change)
 
 ## How recording works
 
-When a session starts, `api/session.py` calls `lk.egress.start_room_composite_egress(...)` with your R2 credentials embedded in the request. LiveKit Egress records the room audio and uploads the `.ogg` file directly to Cloudflare R2. The API stores the R2 key in MongoDB. The frontend fetches a presigned URL from `GET /interview/{session_id}/recording`.
+When a session starts, `api/session.py` calls `lk.egress.start_room_composite_egress(...)` with your AWS S3 credentials embedded in the request. LiveKit Egress records the room audio and uploads the `.ogg` file directly to AWS S3. The API stores the S3 key in MongoDB. The frontend fetches a presigned URL from `GET /interview/{session_id}/recording`.
 
 ---
 

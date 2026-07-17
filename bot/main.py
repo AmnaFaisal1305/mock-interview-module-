@@ -74,7 +74,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--language_mode", required=True, choices=["english", "urdu", "mixed"])
     parser.add_argument("--session_id", required=True)
     parser.add_argument("--egress_id", required=False, default=None)
-    parser.add_argument("--r2_key", required=False, default=None)
+    parser.add_argument("--s3_key", required=False, default=None)
     parser.add_argument("--user_id", required=False, default=None)
     return parser.parse_args()
 
@@ -421,7 +421,7 @@ async def _end_session(
     logger.info("LiveKit room disconnected | session_id=%s", args.session_id)
 
     # Step 5 — stop LiveKit Egress and save recording metadata to MongoDB
-    if args.egress_id and args.r2_key:
+    if args.egress_id and args.s3_key:
         try:
             from livekit import api as livekit_api
             lk_url = os.environ.get("LIVEKIT_URL", "").replace("wss://", "https://").replace("ws://", "http://")
@@ -439,7 +439,7 @@ async def _end_session(
             write_recording(
                 session_id=args.session_id,
                 egress_id=args.egress_id,
-                r2_key=args.r2_key,
+                s3_key=args.s3_key,
             )
             logger.info("Recording metadata written | session_id=%s", args.session_id)
         except Exception as exc:
