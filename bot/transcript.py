@@ -5,18 +5,30 @@ from typing import List, Dict
 
 logger = logging.getLogger("careerpilot.bot")
 
-# Phrases that indicate the candidate is asking to repeat the question (not answering)
+# Pure repeat — candidate wants the same question re-read, no penalty
 _REPEAT_PHRASES = [
     "repeat", "say that again", "say again", "pardon", "didn't hear",
     "can't hear", "couldn't hear", "didn't catch", "couldn't catch",
     "what did you say", "what was that", "please repeat", "can you say",
     "come again", "once more", "once again",
-    # Urdu / mixed equivalents
+    # Urdu / mixed
     "dobara", "phir se", "phir say", "samjha nahi", "samajh nahi",
     "sunai nahi", "suna nahi", "aik baar phir", "ek baar phir",
 ]
 
-# Phrases the bot uses when probing a weak/short answer (from agent template)
+# Simplification request — candidate asks for easier explanation (-1 penalty)
+_CLARIFICATION_PHRASES = [
+    "easy words", "simple words", "simpler", "simplify", "easier",
+    "what do you mean", "don't understand", "dont understand", "didn't understand",
+    "can you explain", "what does that mean", "meaning of", "i don't get",
+    "i didn't get", "in simple", "easy language", "simple language",
+    "easy way", "simple way", "layman", "in other words", "rephrase",
+    # Urdu / mixed
+    "aasan alfaz", "aasan zaban", "aasaan", "samjhao", "asaan",
+    "آسان", "سمجھاؤ",
+]
+
+# Bot probe phrases (follow-up on weak answer, not a new question)
 _PROBE_PHRASES = [
     "didn't quite catch", "could you tell me more", "could you give me",
     "let me rephrase", "could you elaborate", "can you give me a specific",
@@ -24,19 +36,42 @@ _PROBE_PHRASES = [
     "could you be more specific",
 ]
 
+# Bot closing/farewell — not a question, should not be scored
+_CLOSING_PHRASES = [
+    "our team will be in touch", "it was a pleasure speaking with you",
+    "have a great day", "have a wonderful day", "that concludes our interview",
+    "that concludes the interview", "end of the interview", "end of our interview",
+    "thank you for your time", "wish you all the best", "best of luck",
+    "good luck with your",
+]
+
 
 def _is_repeat_request(text: str) -> bool:
-    """True if the candidate is asking to repeat the question rather than answering it."""
+    """Candidate wants the exact question repeated — no penalty."""
     t = text.lower().strip()
     if len(t.split()) > 15:
         return False
     return any(phrase in t for phrase in _REPEAT_PHRASES)
 
 
+def _is_clarification_request(text: str) -> bool:
+    """Candidate asks for a simpler explanation — triggers -1 score penalty."""
+    t = text.lower().strip()
+    if len(t.split()) > 20:
+        return False
+    return any(phrase in t for phrase in _CLARIFICATION_PHRASES)
+
+
 def _is_probe_turn(text: str) -> bool:
-    """True if the agent turn is a probe/follow-up on a weak answer, not a new question."""
+    """Bot follow-up on a weak answer, not a new question."""
     t = text.lower()
     return any(phrase in t for phrase in _PROBE_PHRASES)
+
+
+def _is_closing_statement(text: str) -> bool:
+    """Bot farewell — never a scoreable question."""
+    t = text.lower()
+    return any(phrase in t for phrase in _CLOSING_PHRASES)
 
 
 @dataclass
@@ -101,37 +136,48 @@ class TranscriptCollector:
             question = self._entries[i].content
             i += 1
 
+            # Skip closing/farewell statements — not scoreable questions
+            if _is_closing_statement(question):
+                # Consume any trailing candidate turns
+                while i < len(self._entries) and self._entries[i].role == "candidate":
+                    i += 1
+                continue
+
             # Merge loop: one iteration per agent turn within the same question
             accumulated_answers: List[str] = []
-            clarifications: List[Dict] = []  # visible sub-turns stored for the report
-            pending_candidate: str = ""       # candidate text waiting for agent clarification
+            clarifications: List[Dict] = []
+            has_penalty: bool = False  # True if candidate asked for simpler explanation
 
             while True:
                 # Collect all consecutive candidate turns
                 round_answers: List[str] = []
-                round_repeats: List[str] = []
+                round_non_answers: List[str] = []
                 while i < len(self._entries) and self._entries[i].role == "candidate":
                     txt = self._entries[i].content.strip()
                     i += 1
                     if not txt:
                         continue
                     if _is_repeat_request(txt):
-                        round_repeats.append(txt)
+                        round_non_answers.append(txt)  # no penalty
+                    elif _is_clarification_request(txt):
+                        round_non_answers.append(txt)
+                        has_penalty = True             # -1 penalty
                     else:
                         round_answers.append(txt)
 
-                # If candidate said nothing substantive (only repeat requests or silence)
-                # and there's another agent turn, it's the repeated/rephrased question
+                # If candidate gave no real answer (only repeat/clarification requests)
+                # and there's another agent turn, it's the rephrased/simplified question
                 if not round_answers and i < len(self._entries) and self._entries[i].role == "agent":
-                    agent_clarification = self._entries[i].content
+                    agent_response = self._entries[i].content
                     i += 1
                     clarifications.append({
-                        "candidate": " ".join(round_repeats) if round_repeats else "[silence]",
-                        "agent": agent_clarification,
+                        "candidate": " ".join(round_non_answers) if round_non_answers else "[silence]",
+                        "agent": agent_response,
+                        "penalty": has_penalty,
                     })
                     continue
 
-                # If the next agent turn is a probe, record it and collect the follow-up
+                # If the next agent turn is a bot probe, record it and keep collecting
                 if round_answers and i < len(self._entries) and self._entries[i].role == "agent":
                     if _is_probe_turn(self._entries[i].content):
                         probe_text = self._entries[i].content
@@ -139,12 +185,12 @@ class TranscriptCollector:
                         clarifications.append({
                             "candidate": " ".join(round_answers),
                             "agent": probe_text,
+                            "penalty": False,
                         })
-                        # Don't add round_answers to accumulated yet — wait for post-probe answer
-                        continue
+                        continue  # collect post-probe answer
 
                 accumulated_answers.extend(round_answers)
-                break  # done with this question
+                break
 
             combined = " ".join(accumulated_answers).strip()
             answer = combined if combined else "[no response]"
@@ -154,6 +200,7 @@ class TranscriptCollector:
                 "answer": answer,
                 "question_index": question_index,
                 "clarifications": clarifications,
+                "penalty": has_penalty,
             })
             question_index += 1
 

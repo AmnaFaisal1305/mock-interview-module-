@@ -39,8 +39,9 @@ class HolisticScoreOutput(BaseModel):
 # ── Full report (assembled by pipeline, stored in MongoDB) ────────────────────
 
 class Clarification(BaseModel):
-    candidate: str = Field(..., description="What the candidate said (repeat request or weak answer)")
-    agent: str = Field(..., description="How the agent responded (rephrased question or probe)")
+    candidate: str = Field(..., description="What the candidate said (repeat/clarification request or weak answer)")
+    agent: str = Field(..., description="How the agent responded (rephrased, simplified, or probe)")
+    penalty: bool = Field(False, description="True if candidate asked for simpler explanation — -1 applied to score")
 
 
 class QuestionResult(BaseModel):
@@ -56,6 +57,10 @@ class QuestionResult(BaseModel):
     clarifications: list[Clarification] = Field(
         default_factory=list,
         description="Repeat/probe sub-turns within this question — visible in report but scored as one unit",
+    )
+    score_penalty: int = Field(
+        0,
+        description="-1 if candidate asked for simpler explanation, 0 otherwise. Applied after LLM scoring.",
     )
 
 

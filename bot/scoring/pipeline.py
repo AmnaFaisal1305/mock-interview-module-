@@ -80,30 +80,46 @@ def run_scoring_pipeline(
             scoring_status = "failed"
 
         # ── Assemble typed questions list ──────────────────────────────────────
-        # Build a lookup from question_index → clarifications collected during pairing
-        clarifications_map = {
-            p["question_index"]: [
-                Clarification(candidate=c["candidate"], agent=c["agent"])
-                for c in p.get("clarifications", [])
-            ]
+        # Build a lookup from question_index → clarifications + penalty flag
+        pair_meta = {
+            p["question_index"]: {
+                "clarifications": [
+                    Clarification(
+                        candidate=c["candidate"],
+                        agent=c["agent"],
+                        penalty=c.get("penalty", False),
+                    )
+                    for c in p.get("clarifications", [])
+                ],
+                "penalty": p.get("penalty", False),
+            }
             for p in pairs
         }
 
-        questions = [
-            QuestionResult(
+        questions = []
+        for s in raw_scores:
+            meta = pair_meta.get(s["question_index"], {"clarifications": [], "penalty": False})
+            raw_score = s["score"] if s["score"] >= 0 else s["score"]
+            score_penalty = -1 if meta["penalty"] else 0
+            # Apply penalty: floor at 0, but preserve -1 error sentinel
+            if raw_score >= 0:
+                final_score = max(0, raw_score + score_penalty)
+            else:
+                final_score = raw_score  # keep -1 sentinel intact
+
+            questions.append(QuestionResult(
                 question_index=s["question_index"],
                 question=s["question"],
                 answer=s["answer"],
                 question_en=s.get("question_en", ""),
                 answer_en=s.get("answer_en", ""),
-                score=s["score"],
+                score=final_score,
                 strengths=s.get("strengths", []),
                 gaps=s.get("gaps", []),
                 suggestion=s.get("suggestion", ""),
-                clarifications=clarifications_map.get(s["question_index"], []),
-            )
-            for s in raw_scores
-        ]
+                clarifications=meta["clarifications"],
+                score_penalty=score_penalty,
+            ))
 
         # ── Build final report ─────────────────────────────────────────────────
         cq_raw = holistic.get("communication_quality", {})
