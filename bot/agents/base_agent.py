@@ -86,11 +86,22 @@ def build_system_prompt(
                 f"Agent template is missing required placeholder: {placeholder}"
             )
 
-    prompt = agent_template
+    lang_instruction = _LANGUAGE_INSTRUCTIONS[language_mode]
+
+    # Prepend language requirement so it is the first thing the model reads —
+    # before any English greeting examples in the OPENING section.
+    preamble = (
+        f"LANGUAGE REQUIREMENT — this overrides every example below:\n"
+        f"{lang_instruction}\n"
+        f"This applies from your very first word, including the greeting.\n\n"
+        f"---\n\n"
+    )
+
+    prompt = preamble + agent_template
     prompt = prompt.replace("{{CANDIDATE_RESUME}}", resume)
     prompt = prompt.replace("{{JOB_DESCRIPTION}}", _prepare_job_description(job_description))
     prompt = prompt.replace("{{NUM_QUESTIONS}}", str(num_questions))
-    prompt = prompt.replace("{{LANGUAGE_INSTRUCTION}}", _LANGUAGE_INSTRUCTIONS[language_mode])
+    prompt = prompt.replace("{{LANGUAGE_INSTRUCTION}}", lang_instruction)
 
     logger.info("System prompt assembled successfully (%d chars)", len(prompt))
     return prompt
