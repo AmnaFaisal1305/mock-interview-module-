@@ -87,7 +87,7 @@ class StartInterviewRequest(BaseModel):
     round_type: str = Field(..., description="hr | technical | cultural | negotiation")
     resume: str = Field(..., min_length=10, description="Full resume text")
     job_description: str = Field(..., min_length=2, description="Full job description text OR a job role title (e.g. 'Software Engineer')")
-    num_questions: int = Field(DEFAULT_QUESTION_COUNT, ge=1, le=15)
+    num_questions: int = Field(DEFAULT_QUESTION_COUNT, ge=3, le=15)
     language: str = Field("english", description="english | urdu | mixed")
     candidate_name: str = Field("Candidate", description="Used in bot greeting")
     user_id: str | None = Field(None, description="Authenticated user ID — links this session to the user's history")
