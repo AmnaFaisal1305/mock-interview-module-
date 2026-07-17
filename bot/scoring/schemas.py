@@ -42,6 +42,7 @@ class Clarification(BaseModel):
     candidate: str = Field(..., description="What the candidate said (repeat/clarification request or weak answer)")
     agent: str = Field(..., description="How the agent responded (rephrased, simplified, or probe)")
     penalty: bool = Field(False, description="True if candidate asked for simpler explanation — -1 applied to score")
+    marking: str = Field("No Marking", description="Display label: 'No Marking' for repeats, '-1' for simplification requests")
 
 
 class QuestionResult(BaseModel):
@@ -58,6 +59,7 @@ class QuestionResult(BaseModel):
         default_factory=list,
         description="Repeat/probe sub-turns within this question — visible in report but scored as one unit",
     )
+    score_before_penalty: int = Field(0, description="Raw LLM score before any penalty was applied")
     score_penalty: int = Field(
         0,
         description="-1 if candidate asked for simpler explanation, 0 otherwise. Applied after LLM scoring.",

@@ -170,10 +170,14 @@ class TranscriptCollector:
                 if not round_answers and i < len(self._entries) and self._entries[i].role == "agent":
                     agent_response = self._entries[i].content
                     i += 1
+                    this_turn_penalty = any(
+                        _is_clarification_request(t) for t in round_non_answers
+                    )
                     clarifications.append({
                         "candidate": " ".join(round_non_answers) if round_non_answers else "[silence]",
                         "agent": agent_response,
-                        "penalty": has_penalty,
+                        "penalty": this_turn_penalty,
+                        "marking": "-1" if this_turn_penalty else "No Marking",
                     })
                     continue
 
@@ -186,6 +190,7 @@ class TranscriptCollector:
                             "candidate": " ".join(round_answers),
                             "agent": probe_text,
                             "penalty": False,
+                            "marking": "No Marking",
                         })
                         continue  # collect post-probe answer
 

@@ -88,6 +88,7 @@ def run_scoring_pipeline(
                         candidate=c["candidate"],
                         agent=c["agent"],
                         penalty=c.get("penalty", False),
+                        marking=c.get("marking", "No Marking"),
                     )
                     for c in p.get("clarifications", [])
                 ],
@@ -99,13 +100,13 @@ def run_scoring_pipeline(
         questions = []
         for s in raw_scores:
             meta = pair_meta.get(s["question_index"], {"clarifications": [], "penalty": False})
-            raw_score = s["score"] if s["score"] >= 0 else s["score"]
+            raw_score = s["score"]
             score_penalty = -1 if meta["penalty"] else 0
             # Apply penalty: floor at 0, but preserve -1 error sentinel
             if raw_score >= 0:
                 final_score = max(0, raw_score + score_penalty)
             else:
-                final_score = raw_score  # keep -1 sentinel intact
+                final_score = raw_score  # keep -1 error sentinel intact
 
             questions.append(QuestionResult(
                 question_index=s["question_index"],
@@ -114,11 +115,12 @@ def run_scoring_pipeline(
                 question_en=s.get("question_en", ""),
                 answer_en=s.get("answer_en", ""),
                 score=final_score,
+                score_before_penalty=raw_score if raw_score >= 0 else 0,
+                score_penalty=score_penalty,
                 strengths=s.get("strengths", []),
                 gaps=s.get("gaps", []),
                 suggestion=s.get("suggestion", ""),
                 clarifications=meta["clarifications"],
-                score_penalty=score_penalty,
             ))
 
         # ── Build final report ─────────────────────────────────────────────────
