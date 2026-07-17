@@ -29,9 +29,9 @@ def _get_s3_client():
     )
 
 
-def generate_presigned_url(s3_key: str, expires_in: int = 3600) -> str:
+def generate_presigned_url(s3_key: str, expires_in: int = 86400) -> str:
     """
-    Returns a temporary URL valid for `expires_in` seconds (default 1 hour).
+    Returns a temporary URL valid for `expires_in` seconds (default 24 hours).
     The browser uses this URL to stream the audio file directly from S3.
     """
     bucket = os.environ.get("AWS_BUCKET_NAME")

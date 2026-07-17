@@ -144,7 +144,7 @@ Content-Type: application/json
 | `candidate_name` | string | ✅ | Any name — used in greeting | `"Candidate"` |
 | `resume` | string | ✅ | Plain text (from upload or typed) | — |
 | `job_description` | string | ✅ | Full JD text **or** a job role title (e.g. `"Software Engineer"`) — from upload, typed, or just the role name | — |
-| `num_questions` | integer | ❌ | 1–15 | `5` |
+| `num_questions` | integer | ❌ | 3–15 | `5` |
 | `language` | string | ❌ | `english` `urdu` `mixed` | `english` |
 | `user_id` | string | ❌ | Authenticated user ID from your auth system (Firebase UID, Supabase UUID, etc.). Include this to link the session to the user's history. Omit for anonymous sessions. | `null` |
 
@@ -228,17 +228,43 @@ GET /interview/{session_id}/report
       "question_index": 0,
       "question": "Walk me through your experience.",
       "answer": "I worked at TechCorp for 2 years...",
-      "score": 7,
-      "score_label": "Average",
+      "question_en": "",
+      "answer_en": "",
+      "score": 6,
+      "score_before_penalty": 7,
+      "score_penalty": -1,
       "strengths": ["Gave specific timeframe", "Mentioned key technology"],
       "gaps": ["No measurable outcome mentioned"],
-      "suggestion": "Add what you achieved — numbers, impact, or recognition."
+      "suggestion": "Add what you achieved — numbers, impact, or recognition.",
+      "clarifications": [
+        {
+          "candidate": "can you explain in easy words",
+          "agent": "Sure — let me rephrase that question more simply...",
+          "penalty": true,
+          "marking": "-1"
+        }
+      ]
     }
   ]
 }
 ```
 
-**Score labels to display:**
+**`clarifications[]`** — repeat/probe sub-turns within a question, visible in the report:
+
+| Field | Meaning |
+|---|---|
+| `candidate` | What the candidate said (repeat request, simplification request, or weak answer before a probe) |
+| `agent` | How the agent responded (rephrased, simplified, or probed) |
+| `penalty` | `true` if candidate asked for a simpler explanation — `-1` was deducted from the score |
+| `marking` | `"No Marking"` for plain repeats / probes — `"-1"` for simplification requests |
+
+Show these under the question in the report so the candidate can see where marks were deducted.
+
+**`score_before_penalty`** — the raw LLM score before any penalty.  
+**`score_penalty`** — `0` or `-1`. Applied when the candidate asked for the question in simpler words.  
+**`score`** — final score (`score_before_penalty + score_penalty`, floored at 0). Use this for display.
+
+**Score labels to display** (derive on the frontend from `score`):
 
 | Score | Label | Color suggestion |
 |---|---|---|
@@ -247,6 +273,8 @@ GET /interview/{session_id}/report
 | 6–7 | Average | Yellow |
 | 8–9 | Strong | Green |
 | 10 | Exceptional | Dark green |
+
+> A score of `-1` means scoring failed for that question — show "Not scored" instead of a label.
 
 **Hiring signal:**
 
@@ -290,7 +318,7 @@ PDF generation is handled **on the frontend** — use the JSON from `GET /report
 The report JSON from step 4 contains everything you need:
 - `overall_score`, `hiring_signal`, `summary_insights`
 - `communication_quality`, `top_recommendations`, `round_specific_insight`
-- `questions[]` — per-question `score`, `score_label`, `strengths`, `gaps`, `suggestion`
+- `questions[]` — per-question `score`, `score_before_penalty`, `score_penalty`, `strengths`, `gaps`, `suggestion`, `clarifications[]`
 
 ---
 
@@ -348,7 +376,7 @@ GET /interview/{session_id}/recording
 ```json
 {
   "session_id": "88f0ad6e-...",
-  "url": "https://<account>.r2.cloudflarestorage.com/recordings/88f0ad6e.ogg?X-Amz-Signature=...",
+  "url": "https://careepilot.s3.ap-southeast-1.amazonaws.com/recordings/88f0ad6e.ogg?X-Amz-Signature=...",
   "format": "ogg",
   "recorded_at": "2026-06-29T14:00:00Z"
 }
@@ -360,7 +388,7 @@ Pass `data.url` directly to an `<audio>` element:
 <audio controls src={data.url} />
 ```
 
-> The URL expires after **1 hour**. If the user revisits later, call this endpoint again to get a fresh URL — don't cache it.
+> The URL expires after **24 hours**. If the user revisits the next day, call this endpoint again to get a fresh URL.
 
 **Responses:**
 
@@ -480,7 +508,7 @@ Use each entry's `session_id` with `/interview/{session_id}/report`, `/transcrip
 
 - **Don't store the `user_token`** beyond the session — it expires.
 - **Do store `session_id`** — it's the key to everything after the interview.
-- **Recording URL expires in 1 hour** — always fetch fresh before playback.
+- **Recording URL expires in 24 hours** — always fetch fresh rather than caching across sessions.
 - **PDF is generated on the frontend** — use the JSON from `/report` with jsPDF, React-PDF, or any PDF library.
 - **The call ends itself** — the AI agent auto-hangs up. You don't need to end it via API.
 - **Text or file for resume/JD** — both work. If the user types their resume, skip the upload step and pass the text directly.

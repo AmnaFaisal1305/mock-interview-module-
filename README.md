@@ -43,12 +43,14 @@ careerpilot/
 │   ├── upload.py           # POST /upload/document — PDF/DOCX text extraction
 │   ├── db.py               # MongoDB read/write helpers (sessions, transcripts, scoring_reports, recordings)
 │   ├── s3.py               # AWS S3 presigned URL generation
+│   ├── hot_pool.py         # Pre-warmed bot process pool
 │   └── token_helper.py     # LiveKit JWT token generation
 │
 ├── bot/
 │   ├── main.py             # Bot entry point — spawned as subprocess per session
 │   ├── config.py           # Models, voices, timeouts, supported types
 │   ├── transcript.py       # TranscriptCollector — captures Q&A pairs from live call
+│   ├── warm_worker.py      # Pre-warmed subprocess entry point
 │   ├── agents/
 │   │   ├── base_agent.py   # Builds system prompt from template + language instruction
 │   │   ├── hr_agent.py
@@ -61,14 +63,19 @@ careerpilot/
 │       ├── holistic.py     # Full-session assessment via Groq
 │       └── schemas.py      # Pydantic models for scoring output + report
 │
-├── logs/                               # Bot subprocess log files (one per session)
-├── test_client.html                    # Browser test client — full flow: upload/paste docs, start interview, live room, results
-├── careerpilot.postman_collection.json # Postman collection — import to test all endpoints
-├── requirements.txt
-├── API_DOCS.md                         # Full API reference
-├── FRONTEND_API.md                     # Frontend integration guide (JS examples)
-├── SETUP.md                            # Backend setup guide for frontend developers
-└── GUIDE.md                            # System architecture deep-dive
+├── infra/
+│   ├── docker-compose.yml  # LiveKit + Egress + Redis stack (self-hosted)
+│   ├── livekit.yaml        # LiveKit server config
+│   └── egress.yaml         # LiveKit Egress config
+│
+├── docs/
+│   ├── FRONTEND_API.md                     # Frontend integration guide (JS examples + full API reference)
+│   ├── USER_JOURNEY.md                     # Frontend implementation spec (screens, states, flows)
+│   └── careerpilot.postman_collection.json # Postman collection — import to test all endpoints
+│
+├── logs/            # Bot subprocess log files (one per session)
+├── test_client.html # Browser test client — full flow without a React frontend
+└── requirements.txt
 ```
 
 ---
@@ -78,7 +85,7 @@ careerpilot/
 ### Prerequisites
 
 - Python 3.11+
-- **LiveKit** — either [LiveKit Cloud](https://livekit.io) project, or Docker Desktop for self-hosted (see [`SELF_HOSTED_LIVEKIT.md`](SELF_HOSTED_LIVEKIT.md))
+- **LiveKit** — either [LiveKit Cloud](https://livekit.io) project, or Docker Desktop for self-hosted (run `docker compose -f infra/docker-compose.yml up -d` from the project root)
 - A [Google AI Studio](https://aistudio.google.com) API key (Gemini Live access)
 - A [Groq](https://console.groq.com) API key
 - A [MongoDB Atlas](https://www.mongodb.com/atlas) cluster
@@ -162,7 +169,7 @@ python -m uvicorn api.session:app --host 127.0.0.1 --port 8000
 7. Frontend fetches results
         GET /report      → JSON score report
         GET /transcript  → full conversation
-        GET /recording   → presigned R2 URL (1 hr expiry)
+        GET /recording   → presigned S3 URL (24 hr expiry)
         PDF generated on the frontend from the JSON report
 ```
 
@@ -180,8 +187,7 @@ python -m uvicorn api.session:app --host 127.0.0.1 --port 8000
 | `GET` | `/user/{user_id}/interviews` | All past sessions for a user — newest first |
 | `GET` | `/health` | Server health + active session count |
 
-Full API reference: [`API_DOCS.md`](API_DOCS.md)  
-Frontend integration guide: [`FRONTEND_API.md`](FRONTEND_API.md)
+Frontend integration guide + full API reference: [`docs/FRONTEND_API.md`](docs/FRONTEND_API.md)
 
 ---
 

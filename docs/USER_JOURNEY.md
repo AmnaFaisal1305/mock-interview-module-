@@ -2,10 +2,7 @@
 
 This document walks through every screen, every user action, every API call, and every UI state in the CareerPilot application — in the order the user experiences them. Use it as the implementation specification for the frontend.
 
-**Related docs:**
-- `FRONTEND_API.md` — full API reference with request/response shapes
-- `API_DOCS.md` — complete endpoint docs with error codes
-- `GUIDE.md` — backend architecture and flow
+**Related doc:** `FRONTEND_API.md` — full API reference with request/response shapes and JS examples
 
 ---
 
@@ -99,7 +96,7 @@ Fields:
 | Candidate Name | text input | ✅ | Any name | — |
 | Round Type | select | ✅ | `hr` \| `technical` \| `cultural` \| `negotiation` | `hr` |
 | Language | select | ❌ | `english` \| `urdu` \| `mixed` | `english` |
-| Number of Questions | number input | ❌ | 1–15 | `5` |
+| Number of Questions | number input | ❌ | 3–15 | `5` |
 
 > **Agent names and voices are fixed server-side** — do not expose them as user-configurable options.
 > HR → Amna (female), Technical → Ahmed (male), Cultural → Hassan (male), Negotiation → Ayan (male)
@@ -378,10 +375,20 @@ Scoring typically completes within 30–60 seconds of the call ending (depends o
       "answer": "I worked at TechCorp for 2 years…",
       "question_en": "",
       "answer_en": "",
-      "score": 7,
+      "score": 6,
+      "score_before_penalty": 7,
+      "score_penalty": -1,
       "strengths": ["Gave specific timeframe", "Mentioned key technology"],
       "gaps": ["No measurable outcome mentioned"],
-      "suggestion": "Add what you achieved — numbers, impact, or recognition."
+      "suggestion": "Add what you achieved — numbers, impact, or recognition.",
+      "clarifications": [
+        {
+          "candidate": "can you explain in easy words",
+          "agent": "Sure — let me rephrase that question more simply...",
+          "penalty": true,
+          "marking": "-1"
+        }
+      ]
     }
   ]
 }
@@ -439,12 +446,15 @@ Display as a bulleted or numbered list.
 | `question_index` | Question number (index + 1) |
 | `question` / `question_en` | The question asked |
 | `answer` / `answer_en` | Truncated answer preview |
-| `score` | Numeric score + label |
+| `score` | Final score (after penalty) — use this for display |
+| `score_before_penalty` | Raw score before any deduction |
+| `score_penalty` | `0` or `-1` — shown only when a penalty was applied |
 | `strengths[]` | Green bullet list |
 | `gaps[]` | Red / amber bullet list |
 | `suggestion` | Italicised improvement tip |
+| `clarifications[]` | Repeat / probe sub-turns — shown under the question |
 
-Score labels:
+**Score labels** (derive from `score`):
 
 | Score | Label |
 |---|---|
@@ -455,6 +465,22 @@ Score labels:
 | 10 | Exceptional |
 
 A score of `-1` means scoring failed for that question — show "Not scored".
+
+**Rendering clarifications under each question:**
+
+Each item in `clarifications[]` is a sub-turn within that question. Show them collapsed or as an expandable section labelled "Sub-turns" beneath the question card:
+
+```
+Q2  "What's your approach to debugging?"   Score: 6 / 10  (was 7, -1 penalty)
+  ├── [Candidate] "can you explain in easy words"
+  │     [Agent]   "Sure — let me rephrase..."
+  │     Marking: -1
+  └── [Candidate] "I usually start by reproducing the issue..."   ← final answer scored
+```
+
+- `marking: "No Marking"` — candidate asked to repeat, no penalty — show as "No Marking"
+- `marking: "-1"` — candidate asked for simpler explanation — show as "-1 Penalty" in red
+- If `clarifications` is empty, don't render the sub-turns section at all
 
 ---
 
@@ -523,7 +549,7 @@ Response:
 ```json
 {
   "session_id": "88f0ad6e-...",
-  "url": "https://…r2.cloudflarestorage.com/recordings/88f0ad6e.ogg?X-Amz-Signature=…",
+  "url": "https://careepilot.s3.ap-southeast-1.amazonaws.com/recordings/88f0ad6e.ogg?X-Amz-Signature=…",
   "format": "ogg",
   "recorded_at": "2026-06-29T14:00:00Z"
 }
@@ -535,7 +561,7 @@ Pass `data.url` directly to an `<audio>` element:
 <audio controls src={data.url} />
 ```
 
-> The URL expires **1 hour** after it's generated. Do not cache it. If the user returns later, call `GET /recording` again to get a fresh URL.
+> The URL expires **24 hours** after it's generated. If the user returns the next day, call `GET /recording` again to get a fresh URL.
 
 OGG audio plays natively in Chrome, Firefox, and Edge. Safari requires a polyfill or transcoding — if Safari support is needed, note this as a future task.
 
@@ -550,8 +576,15 @@ HISTORY PAGE  (on login — optional, show before SETUP PAGE)
   │     → each card shows: round_type, candidate_name, created_at, overall_score, hiring_signal
   │
   ├── Click a past session card
-  │     → navigate to /results/{session_id}
-  │     → load report, transcript, recording on demand
+  │     → navigate to /history/{session_id}
+  │     → fetch all three in parallel on page load:
+  │           GET /interview/{session_id}/report
+  │           GET /interview/{session_id}/transcript
+  │           GET /interview/{session_id}/recording
+  │     → render 3 tabs: [Score Report] [Transcript] [Recording]
+  │     → Score Report tab is active by default
+  │     → if scoring_status is "pending", poll report every 4s until 200
+  │     → other two tabs are instantly available regardless
   │
   └── "Start New Interview" button → navigate to SETUP PAGE
 
