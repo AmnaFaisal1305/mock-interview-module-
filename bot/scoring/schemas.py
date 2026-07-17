@@ -38,16 +38,25 @@ class HolisticScoreOutput(BaseModel):
 
 # ── Full report (assembled by pipeline, stored in MongoDB) ────────────────────
 
+class Clarification(BaseModel):
+    candidate: str = Field(..., description="What the candidate said (repeat request or weak answer)")
+    agent: str = Field(..., description="How the agent responded (rephrased question or probe)")
+
+
 class QuestionResult(BaseModel):
     question_index: int
     question: str = Field(..., description="The exact question the bot asked")
-    answer: str = Field(..., description="The candidate's answer (or '[no response]')")
+    answer: str = Field(..., description="The candidate's final answer (or '[no response]')")
     question_en: str = Field(default="", description="English translation of the question (empty if already English)")
     answer_en: str = Field(default="", description="English translation of the candidate's answer (empty if already English)")
     score: int = Field(..., ge=-1, le=10)  # -1 is the error sentinel when scoring fails
     strengths: list[str]
     gaps: list[str]
     suggestion: str
+    clarifications: list[Clarification] = Field(
+        default_factory=list,
+        description="Repeat/probe sub-turns within this question — visible in report but scored as one unit",
+    )
 
 
 class ScoringReport(BaseModel):

@@ -103,33 +103,47 @@ class TranscriptCollector:
 
             # Merge loop: one iteration per agent turn within the same question
             accumulated_answers: List[str] = []
+            clarifications: List[Dict] = []  # visible sub-turns stored for the report
+            pending_candidate: str = ""       # candidate text waiting for agent clarification
 
             while True:
                 # Collect all consecutive candidate turns
                 round_answers: List[str] = []
+                round_repeats: List[str] = []
                 while i < len(self._entries) and self._entries[i].role == "candidate":
                     txt = self._entries[i].content.strip()
                     i += 1
                     if not txt:
                         continue
                     if _is_repeat_request(txt):
-                        continue  # discard "can you repeat?" — not an answer
-                    round_answers.append(txt)
+                        round_repeats.append(txt)
+                    else:
+                        round_answers.append(txt)
 
                 # If candidate said nothing substantive (only repeat requests or silence)
-                # and there's another agent turn, it's the repeated question — skip it
+                # and there's another agent turn, it's the repeated/rephrased question
                 if not round_answers and i < len(self._entries) and self._entries[i].role == "agent":
-                    i += 1  # consume the repeated/rephrased agent turn
+                    agent_clarification = self._entries[i].content
+                    i += 1
+                    clarifications.append({
+                        "candidate": " ".join(round_repeats) if round_repeats else "[silence]",
+                        "agent": agent_clarification,
+                    })
                     continue
 
-                accumulated_answers.extend(round_answers)
-
-                # If the next agent turn is a probe, merge it into this question
-                if i < len(self._entries) and self._entries[i].role == "agent":
+                # If the next agent turn is a probe, record it and collect the follow-up
+                if round_answers and i < len(self._entries) and self._entries[i].role == "agent":
                     if _is_probe_turn(self._entries[i].content):
-                        i += 1  # consume probe turn
-                        continue  # collect the post-probe candidate answer
+                        probe_text = self._entries[i].content
+                        i += 1
+                        clarifications.append({
+                            "candidate": " ".join(round_answers),
+                            "agent": probe_text,
+                        })
+                        # Don't add round_answers to accumulated yet — wait for post-probe answer
+                        continue
 
+                accumulated_answers.extend(round_answers)
                 break  # done with this question
 
             combined = " ".join(accumulated_answers).strip()
@@ -139,6 +153,7 @@ class TranscriptCollector:
                 "question": question,
                 "answer": answer,
                 "question_index": question_index,
+                "clarifications": clarifications,
             })
             question_index += 1
 

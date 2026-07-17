@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from bot.transcript import TranscriptCollector
 from bot.scoring.per_question import score_question
 from bot.scoring.holistic import score_session
-from bot.scoring.schemas import CommunicationQuality, QuestionResult, ScoringReport
+from bot.scoring.schemas import Clarification, CommunicationQuality, QuestionResult, ScoringReport
 
 logger = logging.getLogger("careerpilot.bot")
 
@@ -80,6 +80,15 @@ def run_scoring_pipeline(
             scoring_status = "failed"
 
         # ── Assemble typed questions list ──────────────────────────────────────
+        # Build a lookup from question_index → clarifications collected during pairing
+        clarifications_map = {
+            p["question_index"]: [
+                Clarification(candidate=c["candidate"], agent=c["agent"])
+                for c in p.get("clarifications", [])
+            ]
+            for p in pairs
+        }
+
         questions = [
             QuestionResult(
                 question_index=s["question_index"],
@@ -91,6 +100,7 @@ def run_scoring_pipeline(
                 strengths=s.get("strengths", []),
                 gaps=s.get("gaps", []),
                 suggestion=s.get("suggestion", ""),
+                clarifications=clarifications_map.get(s["question_index"], []),
             )
             for s in raw_scores
         ]
