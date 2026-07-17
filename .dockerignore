@@ -1,0 +1,38 @@
+# Git
+.git
+.github
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+
+# Documentation
+docs/
+
+# Misc
+*.swp
