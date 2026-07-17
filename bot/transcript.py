@@ -81,7 +81,12 @@ class TranscriptCollector:
             })
             question_index += 1
 
-        logger.info("get_pairs → %d pairs extracted", len(pairs))
+        # Drop the first pair — it's always the greeting, not an interview question
+        pairs = pairs[1:]
+        for idx, p in enumerate(pairs):
+            p["question_index"] = idx
+
+        logger.info("get_pairs → %d pairs extracted (greeting excluded)", len(pairs))
         return pairs
 
 
