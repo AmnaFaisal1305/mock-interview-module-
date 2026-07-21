@@ -199,9 +199,9 @@ def read_scoring_report(session_id: str) -> dict | None:
         return None
 
 
-def write_recording(session_id: str, egress_id: str, s3_key: str) -> None:
+def write_recording(session_id: str, egress_id: str | None, s3_key: str) -> None:
     """
-    Saves recording metadata after LiveKit Egress stops.
+    Saves recording metadata after the in-bot AudioBufferProcessor uploads to S3.
     The actual audio file lives in S3 at s3_key — we store only the reference.
     """
     try:
@@ -213,7 +213,7 @@ def write_recording(session_id: str, egress_id: str, s3_key: str) -> None:
                     "session_id": session_id,
                     "egress_id": egress_id,
                     "s3_key": s3_key,
-                    "format": "ogg",
+                    "format": "wav",
                     "recorded_at": datetime.now(timezone.utc).isoformat(),
                 }
             },
