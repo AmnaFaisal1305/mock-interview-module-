@@ -102,7 +102,7 @@ class StartInterviewResponse(BaseModel):
 
 # ── POST /interview/start ─────────────────────────────────────────────────────
 
-@app.post("/interview/start", response_model=StartInterviewResponse)
+@app.post("/ai/interview/start", response_model=StartInterviewResponse)
 async def start_interview(req: StartInterviewRequest):
     # ── Validate enums ────────────────────────────────────────────────────────
     if req.round_type not in SUPPORTED_ROUND_TYPES:
@@ -228,7 +228,7 @@ async def start_interview(req: StartInterviewRequest):
 
 # ── GET /interview/{session_id}/report ────────────────────────────────────────
 
-@app.get("/interview/{session_id}/report")
+@app.get("/ai/interview/{session_id}/report")
 async def get_report(session_id: str):
     report = read_scoring_report(session_id)
 
@@ -247,7 +247,7 @@ async def get_report(session_id: str):
 
 # ── GET /interview/{session_id}/transcript ────────────────────────────────────
 
-@app.get("/interview/{session_id}/transcript")
+@app.get("/ai/interview/{session_id}/transcript")
 async def get_transcript(session_id: str):
     doc = read_transcript(session_id)
     if doc is None:
@@ -257,7 +257,7 @@ async def get_transcript(session_id: str):
 
 # ── GET /interview/{session_id}/recording ────────────────────────────────────
 
-@app.get("/interview/{session_id}/recording")
+@app.get("/ai/interview/{session_id}/recording")
 async def get_recording(session_id: str):
     doc = read_recording(session_id)
     if doc is None:
@@ -277,7 +277,7 @@ async def get_recording(session_id: str):
 
 # ── GET /user/{user_id}/interviews ───────────────────────────────────────────
 
-@app.get("/user/{user_id}/interviews")
+@app.get("/ai/interview/user/{user_id}/interviews")
 async def get_user_interviews(user_id: str):
     """
     Returns all past interview sessions for a user, newest first.
@@ -292,6 +292,6 @@ async def get_user_interviews(user_id: str):
 
 # ── GET /health ───────────────────────────────────────────────────────────────
 
-@app.get("/health")
+@app.get("/ai/interview/health")
 async def health():
     return {"status": "ok", "active_sessions": len(_active_bots)}

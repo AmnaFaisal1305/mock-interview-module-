@@ -1,0 +1,73 @@
+name: Deploy Interview Service to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+
+          script: |
+            set -e
+
+            cd ~/mock-interview-module-
+
+            echo "Updating source..."
+            git fetch origin
+            git reset --hard origin/main
+
+            echo "Stopping existing container..."
+            docker stop interview-service-container || true
+
+            echo "Removing existing container..."
+            docker rm interview-service-container || true
+
+            echo "Removing previous image..."
+            docker rmi interview-service-image || true
+
+            echo "Building image..."
+            docker build -t interview-service-image .
+
+            echo "Starting container..."
+            docker run -d \
+              --name interview-service-container \
+              --restart unless-stopped \
+              --env-file /home/ubuntu/.env \
+              -p 5000:5000 \
+              interview-service-image
+
+            echo "Waiting for service..."
+
+            healthy=false
+
+            for i in {1..30}; do
+              if curl -fs http://localhost:5000/ai/interview/health > /dev/null; then
+                echo "Service is healthy!"
+                healthy=true
+                break
+              fi
+
+              echo "Waiting... ($i/30)"
+              sleep 2
+            done
+
+            if [ "$healthy" = false ]; then
+              echo "Service failed to start!"
+              docker logs interview-service-container
+              exit 1
+            fi
+
+            echo "Cleaning up unused Docker images..."
+            docker image prune -f
+
+            echo "Deployment successful!"
