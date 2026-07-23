@@ -34,5 +34,6 @@ session_id.txt
 # Logs folder (keep the folder, not the logs)
 logs/
 !logs/.gitkeep
+docs/
 
 

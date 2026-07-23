@@ -1,6 +1,0 @@
-api_key: devkey
-api_secret: devsecret-local-dev-only-32charslong!!
-ws_url: ws://livekit:7880
-
-redis:
-  address: redis:6379
