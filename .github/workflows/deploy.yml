@@ -5,26 +5,67 @@ on:
     branches:
       - main
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
+  packages: write
 
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
     steps:
-      - name: Deploy to EC2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-
           script: |
             set -e
 
-            cd ~/mock-interview-module-
+            IMAGE_NAME="ghcr.io/${{ github.repository }}:latest"
 
-            echo "Updating source..."
-            git fetch origin
-            git reset --hard origin/main
+            echo "Logging into GHCR on EC2..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+            echo "Pulling latest image..."
+            docker pull $IMAGE_NAME
 
             echo "Stopping existing container..."
             docker stop interview-service-container || true
@@ -32,42 +73,32 @@ jobs:
             echo "Removing existing container..."
             docker rm interview-service-container || true
 
-            echo "Removing previous image..."
-            docker rmi interview-service-image || true
-
-            echo "Building image..."
-            docker build -t interview-service-image .
-
-            echo "Starting container..."
+            echo "Starting new container..."
             docker run -d \
               --name interview-service-container \
               --restart unless-stopped \
               --env-file /home/ubuntu/.env \
               -p 5000:5000 \
-              interview-service-image
+              $IMAGE_NAME
 
-            echo "Waiting for service..."
-
+            echo "Waiting for service health check..."
             healthy=false
-
             for i in {1..30}; do
               if curl -fs http://localhost:5000/ai/interview/health > /dev/null; then
                 echo "Service is healthy!"
                 healthy=true
                 break
               fi
-
               echo "Waiting... ($i/30)"
               sleep 2
             done
 
             if [ "$healthy" = false ]; then
-              echo "Service failed to start!"
+              echo "Service failed to start! Fetching logs..."
               docker logs interview-service-container
               exit 1
             fi
 
-            echo "Cleaning up unused Docker images..."
-            docker image prune -f
-
+            echo "Pruning unused images to free disk space..."
+            docker image prune -a -f
             echo "Deployment successful!"
