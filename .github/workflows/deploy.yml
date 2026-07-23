@@ -12,8 +12,6 @@ permissions:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,11 +26,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Format clean repository name
+        id: prep
+        run: |
+          # Lowercase and strip any trailing hyphens/underscores for Docker tag compatibility
+          REPO_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]' | sed 's/[-_]*$//')
+          echo "image=ghcr.io/${REPO_NAME}" >> $GITHUB_OUTPUT
+
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ steps.prep.outputs.image }}
           tags: |
             type=sha,format=long
             type=raw,value=latest
@@ -59,12 +64,14 @@ jobs:
           script: |
             set -e
 
-            IMAGE_NAME="ghcr.io/${{ github.repository }}:latest"
+            # Sanitize repo name on EC2 side as well
+            REPO_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]' | sed 's/[-_]*$//')
+            IMAGE_NAME="ghcr.io/${REPO_NAME}:latest"
 
             echo "Logging into GHCR on EC2..."
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-            echo "Pulling latest image..."
+            echo "Pulling latest image: $IMAGE_NAME..."
             docker pull $IMAGE_NAME
 
             echo "Stopping existing container..."
@@ -99,6 +106,6 @@ jobs:
               exit 1
             fi
 
-            echo "Pruning unused images to free disk space..."
+            echo "Pruning unused images..."
             docker image prune -a -f
             echo "Deployment successful!"
