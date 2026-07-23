@@ -119,6 +119,7 @@ async def start_interview(req: StartInterviewRequest):
     session_id = str(uuid.uuid4())
     room_name = f"interview-{session_id}"
     livekit_url = os.environ.get("LIVEKIT_URL", "")
+    livekit_public_url = os.environ.get("LIVEKIT_PUBLIC_URL", livekit_url)
 
     if not livekit_url:
         raise HTTPException(status_code=500, detail="LIVEKIT_URL not configured")
@@ -134,11 +135,7 @@ async def start_interview(req: StartInterviewRequest):
     # ── Spawn bot process ─────────────────────────────────────────────────────
     vad_threshold = VAD_SILENCE_THRESHOLDS.get(req.round_type, 700)
 
-    # ── Create room + start LiveKit Egress (audio-only recording → AWS S3) ──
-    # The room must exist before an egress can be attached to it. We pre-create it
-    # here so egress can start immediately, before the bot subprocess joins.
-    egress_id = None
-    s3_key = f"recordings/{session_id}.ogg"
+    # ── Pre-create room so the user token is valid before the bot subprocess joins ──
     try:
         lk_url = livekit_url.replace("wss://", "https://").replace("ws://", "http://")
         async with livekit_api.LiveKitAPI(
@@ -150,29 +147,8 @@ async def start_interview(req: StartInterviewRequest):
                 livekit_api.CreateRoomRequest(name=room_name)
             )
             logger.info("Room pre-created | session_id=%s room=%s", session_id, room_name)
-
-            egress_info = await lk.egress.start_room_composite_egress(
-                livekit_api.RoomCompositeEgressRequest(
-                    room_name=room_name,
-                    audio_only=True,
-                    file_outputs=[
-                        livekit_api.EncodedFileOutput(
-                            file_type=livekit_api.OGG,
-                            filepath=s3_key,
-                            s3=livekit_api.S3Upload(
-                                access_key=os.environ.get("AWS_ACCESS_KEY_ID", ""),
-                                secret=os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
-                                bucket=os.environ.get("AWS_BUCKET_NAME", ""),
-                                region=os.environ.get("AWS_REGION", "ap-southeast-1"),
-                            ),
-                        )
-                    ],
-                )
-            )
-        egress_id = egress_info.egress_id
-        logger.info("Egress started | session_id=%s egress_id=%s", session_id, egress_id)
     except Exception as exc:
-        logger.error("Egress start failed | session_id=%s error=%s — continuing without recording", session_id, exc)
+        logger.error("Room creation failed | session_id=%s error=%s", session_id, exc)
 
     logs_dir = os.path.join(os.path.dirname(__file__), "..", "logs")
     os.makedirs(logs_dir, exist_ok=True)
@@ -187,8 +163,6 @@ async def start_interview(req: StartInterviewRequest):
         "job_description": req.job_description,
         "num_questions":   req.num_questions,
         "language_mode":   req.language,
-        "egress_id":       egress_id,
-        "s3_key":          s3_key if egress_id else None,
         "user_id":         req.user_id,
     }
 
@@ -221,7 +195,7 @@ async def start_interview(req: StartInterviewRequest):
     return StartInterviewResponse(
         session_id=session_id,
         room_name=room_name,
-        livekit_url=livekit_url,
+        livekit_url=livekit_public_url,
         user_token=user_token,
     )
 

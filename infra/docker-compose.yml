@@ -49,27 +49,6 @@ services:
     networks:
       - careerpilot
 
-  egress:
-    image: livekit/egress:latest
-    container_name: livekit-egress
-
-    environment:
-      EGRESS_CONFIG_FILE: /etc/egress.yaml
-
-    volumes:
-      - ./egress.yaml:/etc/egress.yaml:ro
-
-    cap_add:
-      - SYS_ADMIN
-
-    depends_on:
-      - livekit
-      - redis
-
-    restart: unless-stopped
-
-    networks:
-      - careerpilot
 
 networks:
   careerpilot:

@@ -16,15 +16,20 @@ Usage:
 
 import argparse
 import asyncio
+import io
 import logging
 import os
+import wave
 from datetime import datetime, timezone
+
+import boto3
 
 # ── Pipecat imports (verified against pipecat 1.4.0) ─────────────────────────
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.processors.aggregators.llm_response_universal import (
     AssistantTurnStoppedMessage,
     LLMContextAggregatorPair,
@@ -73,8 +78,6 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--num_questions", type=int, required=True)
     parser.add_argument("--language_mode", required=True, choices=["english", "urdu", "mixed"])
     parser.add_argument("--session_id", required=True)
-    parser.add_argument("--egress_id", required=False, default=None)
-    parser.add_argument("--s3_key", required=False, default=None)
     parser.add_argument("--user_id", required=False, default=None)
     return parser.parse_args()
 
@@ -103,6 +106,46 @@ async def run_bot(args: argparse.Namespace) -> None:
 
     vad_threshold = VAD_SILENCE_THRESHOLDS[args.round_type]
     transcript_collector = TranscriptCollector()
+
+    # ── Audio recording (AudioBufferProcessor → WAV → S3) ─────────────────────
+    _recording_done = asyncio.Event()
+
+    audio_buffer = AudioBufferProcessor(
+        num_channels=2,            # stereo: user=left channel, bot=right channel
+        auto_start_recording=True,
+    )
+
+    @audio_buffer.event_handler("on_audio_data")
+    async def on_audio_data(buffer, audio: bytes, sample_rate: int, num_channels: int) -> None:
+        try:
+            s3_key = f"recordings/{args.session_id}.wav"
+            wav_io = io.BytesIO()
+            with wave.open(wav_io, "wb") as wf:
+                wf.setnchannels(num_channels)
+                wf.setsampwidth(2)
+                wf.setframerate(sample_rate)
+                wf.writeframes(audio)
+
+            boto3.client(
+                "s3",
+                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+                region_name=os.environ.get("AWS_REGION", "ap-southeast-1"),
+            ).put_object(
+                Bucket=os.environ["AWS_BUCKET_NAME"],
+                Key=s3_key,
+                Body=wav_io.getvalue(),
+                ContentType="audio/wav",
+            )
+            logger.info("Recording uploaded to S3 | session_id=%s key=%s", args.session_id, s3_key)
+
+            from api.db import write_recording  # type: ignore[import]
+            write_recording(session_id=args.session_id, egress_id=None, s3_key=s3_key)
+            logger.info("Recording metadata written | session_id=%s", args.session_id)
+        except Exception as exc:
+            logger.error("Recording upload failed | session_id=%s error=%s", args.session_id, exc)
+        finally:
+            _recording_done.set()
 
     # ── Transport ──────────────────────────────────────────────────────────────
     transport = LiveKitTransport(
@@ -276,6 +319,7 @@ async def run_bot(args: argparse.Namespace) -> None:
         user_aggregator,
         llm,
         transport.output(),
+        audio_buffer,
         assistant_aggregator,
     ])
 
@@ -352,7 +396,7 @@ async def run_bot(args: argparse.Namespace) -> None:
         if _hangup_state["session_ending"]:
             return
         _hangup_state["session_ending"] = True
-        await _end_session(args, session_start, transcript_collector, worker)
+        await _end_session(args, session_start, transcript_collector, worker, audio_buffer, _recording_done)
 
     # ── Session end — correct event name for LiveKit transport is on_participant_disconnected
     @transport.event_handler("on_participant_disconnected")
@@ -385,12 +429,23 @@ async def _end_session(
     session_start: datetime,
     transcript_collector: TranscriptCollector,
     worker: PipelineWorker,
+    audio_buffer: AudioBufferProcessor,
+    recording_done: asyncio.Event,
 ) -> None:
     session_end = datetime.now(timezone.utc)
     duration_secs = (session_end - session_start).total_seconds()
     pairs_count = len(transcript_collector.get_pairs())
 
-    # Step 1 — stop pipeline
+    # Step 1 — flush recording → fires on_audio_data → uploads WAV to S3
+    try:
+        await audio_buffer.stop_recording()
+        await asyncio.wait_for(recording_done.wait(), timeout=30)
+    except asyncio.TimeoutError:
+        logger.warning("Recording upload timed out | session_id=%s", args.session_id)
+    except Exception as exc:
+        logger.error("Recording stop failed | session_id=%s error=%s", args.session_id, exc)
+
+    # Step 2 — stop pipeline
     try:
         await worker.cancel()
         logger.info("Pipeline cancelled | session_id=%s", args.session_id)
@@ -420,32 +475,7 @@ async def _end_session(
     logger.info("Gemini Live connection closed | session_id=%s", args.session_id)
     logger.info("LiveKit room disconnected | session_id=%s", args.session_id)
 
-    # Step 5 — stop LiveKit Egress and save recording metadata to MongoDB
-    if args.egress_id and args.s3_key:
-        try:
-            from livekit import api as livekit_api
-            lk_url = os.environ.get("LIVEKIT_URL", "").replace("wss://", "https://").replace("ws://", "http://")
-            async with livekit_api.LiveKitAPI(
-                url=lk_url,
-                api_key=os.environ.get("LIVEKIT_API_KEY", ""),
-                api_secret=os.environ.get("LIVEKIT_API_SECRET", ""),
-            ) as lk:
-                await lk.egress.stop_egress(
-                    livekit_api.StopEgressRequest(egress_id=args.egress_id)
-                )
-            logger.info("Egress stopped | session_id=%s egress_id=%s", args.session_id, args.egress_id)
-
-            from api.db import write_recording  # type: ignore[import]
-            write_recording(
-                session_id=args.session_id,
-                egress_id=args.egress_id,
-                s3_key=args.s3_key,
-            )
-            logger.info("Recording metadata written | session_id=%s", args.session_id)
-        except Exception as exc:
-            logger.error("Egress stop/recording write failed | session_id=%s error=%s", args.session_id, exc)
-
-    # Step 7 — run scoring and write report (awaited so process stays alive)
+    # Step 3 — run scoring and write report (awaited so process stays alive)
     await _run_scoring_async(
         session_id=args.session_id,
         transcript=serialised_transcript,
