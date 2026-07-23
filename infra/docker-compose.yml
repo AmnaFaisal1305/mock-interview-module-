@@ -1,5 +1,6 @@
 services:
   interview-service:
+    image: ${IMAGE_NAME:-mock-interview-module:local}
     build:
       context: ..
       dockerfile: Dockerfile

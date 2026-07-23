@@ -55,6 +55,18 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy compose files to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "infra/docker-compose.yml,infra/livekit.yaml"
+          target: "/home/ubuntu"
+
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.2.2
         with:
@@ -66,27 +78,22 @@ jobs:
 
             # Sanitize repo name on EC2 side as well
             REPO_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]' | sed 's/[-_]*$//')
-            IMAGE_NAME="ghcr.io/${REPO_NAME}:latest"
+            export IMAGE_NAME="ghcr.io/${REPO_NAME}:latest"
 
             echo "Logging into GHCR on EC2..."
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-            echo "Pulling latest image: $IMAGE_NAME..."
-            docker pull $IMAGE_NAME
+            # One-time cleanup: remove the old standalone container from before the compose migration
+            docker stop interview-service-container 2>/dev/null || true
+            docker rm interview-service-container 2>/dev/null || true
 
-            echo "Stopping existing container..."
-            docker stop interview-service-container || true
+            cd /home/ubuntu
 
-            echo "Removing existing container..."
-            docker rm interview-service-container || true
+            echo "Pulling latest images: $IMAGE_NAME, redis, livekit..."
+            docker compose -f infra/docker-compose.yml pull interview-service redis livekit
 
-            echo "Starting new container..."
-            docker run -d \
-              --name interview-service-container \
-              --restart unless-stopped \
-              --env-file /home/ubuntu/.env \
-              -p 5000:5000 \
-              $IMAGE_NAME
+            echo "Starting services (interview-service, redis, livekit)..."
+            docker compose -f infra/docker-compose.yml up -d --no-build
 
             echo "Waiting for service health check..."
             healthy=false
@@ -102,7 +109,7 @@ jobs:
 
             if [ "$healthy" = false ]; then
               echo "Service failed to start! Fetching logs..."
-              docker logs interview-service-container
+              docker compose -f infra/docker-compose.yml logs --tail=100
               exit 1
             fi
 
