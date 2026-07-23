@@ -4,7 +4,7 @@ AI-powered mock interview platform with real-time voice and automated scoring.
 
 Candidates speak with an AI interviewer over a live voice call. After the call ends, the system scores every answer and generates a structured JSON report — per-question scores, strengths, gaps, recommendations, and a hiring signal. The frontend uses this JSON to render results and generate a PDF.
 
----
+----
 
 ## Features
 
