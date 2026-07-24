@@ -73,7 +73,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten to React origin in production
+    allow_origins=["https://www.career-pilot.tech"],
+    allow_origin_regex=r"http://localhost:\d+",  # any Vite dev port (5173, 5174, ...)
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -1,8 +1,9 @@
 # CareerPilot — Frontend Integration Guide
 
-**Base URL:** `http://127.0.0.1:8000` (local) — replace with production URL when deployed  
+**Base URL:** `http://127.0.0.1:8000` (local) · `https://api.career-pilot.tech` (production)  
+**Every endpoint below lives under the `/ai/interview` prefix** — e.g. locally that's `http://127.0.0.1:8000/ai/interview/start`, in production `https://api.career-pilot.tech/ai/interview/start`. This includes `/upload/document`, which is *not* a top-level route.  
 **All requests/responses:** `application/json` unless noted  
-**CORS:** All origins allowed — no extra headers needed from the frontend
+**CORS:** Restricted to `https://www.career-pilot.tech` (production) and `http://localhost:<any port>` (Vite dev — 5173, 5174, etc. all work). Requests from any other origin will be blocked by the browser.
 
 ---
 
@@ -10,10 +11,10 @@
 
 ```
 1. User uploads resume + JD files
-         │  POST /upload/document  (×2)
+         │  POST /ai/interview/upload/document  (×2)
          ▼
 2. User fills interview form (round, name, questions)
-         │  POST /interview/start
+         │  POST /ai/interview/start
          ▼
 3. Frontend joins LiveKit room with user_token
          │  LiveKit JS SDK
@@ -22,7 +23,7 @@
          │  (real-time, no API calls)
          ▼
 5. Call ends (bot auto-hangs up)
-         │  Poll GET /interview/{session_id}/report
+         │  Poll GET /ai/interview/{session_id}/report
          ▼
 6. Show score report + generate PDF on frontend + play recording
          │  GET /report  /transcript  /recording
@@ -40,7 +41,7 @@
 **Call twice** — once for resume, once for job description.
 
 ```
-POST /upload/document
+POST /ai/interview/upload/document
 Content-Type: multipart/form-data
 ```
 
@@ -63,7 +64,7 @@ async function handleFileSelect(file, type) {
   formData.append('file', file);  // send the raw file — don't set Content-Type header
 
   // Show a loading indicator here ("Parsing…")
-  const res  = await fetch('http://127.0.0.1:8000/upload/document', {
+  const res  = await fetch('http://127.0.0.1:8000/ai/interview/upload/document', {
     method: 'POST',
     body: formData,
   });
@@ -86,7 +87,7 @@ async function handleFileSelect(file, type) {
 resumeInput.addEventListener('change', e => handleFileSelect(e.target.files[0], 'resume'));
 jdInput.addEventListener('change',     e => handleFileSelect(e.target.files[0], 'jd'));
 
-// Then in POST /interview/start — pass the stored text, not the file
+// Then in POST /ai/interview/start — pass the stored text, not the file
 body: JSON.stringify({
   resume:          resumeText,   // text extracted by the backend
   job_description: jdText,
@@ -104,7 +105,7 @@ body: JSON.stringify({
 }
 ```
 
-> Save `data.text` and use it as the `resume` or `job_description` field in `POST /interview/start`.
+> Save `data.text` and use it as the `resume` or `job_description` field in `POST /ai/interview/start`.
 
 **Errors:**
 
@@ -120,7 +121,7 @@ body: JSON.stringify({
 **Use when:** User submits the interview form.
 
 ```
-POST /interview/start
+POST /ai/interview/start
 Content-Type: application/json
 ```
 
@@ -156,10 +157,12 @@ Content-Type: application/json
 {
   "session_id": "88f0ad6e-ae6a-4087-ad8f-dec4dd3b771d",
   "room_name": "interview-88f0ad6e-ae6a-4087-ad8f-dec4dd3b771d",
-  "livekit_url": "wss://mock-interview-6jl67ty0.livekit.cloud",
+  "livekit_url": "ws://18.143.170.133:7880",
   "user_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6..."
 }
 ```
+
+> **`livekit_url` is currently a plain `ws://` URL to the self-hosted LiveKit server's IP** (not `wss://`/TLS — self-hosted on EC2, not LiveKit Cloud). This works fine as long as the frontend itself is also served over plain HTTP. If the frontend moves to HTTPS, browsers will block a `ws://` connection from a secure page (mixed-content policy) — at that point the backend needs `LIVEKIT_PUBLIC_URL` set to a `wss://` domain (behind TLS) for this to keep working.
 
 **What to do with the response:**
 
@@ -198,7 +201,7 @@ The call ends automatically when the agent says goodbye — you don't need to ca
 **Use when:** Call ends. Poll this endpoint until you get a 200.
 
 ```
-GET /interview/{session_id}/report
+GET /ai/interview/{session_id}/report
 ```
 
 **Success — 200** (interview ended + scoring complete):
@@ -289,7 +292,7 @@ Show these under the question in the report so the candidate can see where marks
 ```js
 async function waitForReport(sessionId) {
   while (true) {
-    const res = await fetch(`/interview/${sessionId}/report`);
+    const res = await fetch(`/ai/interview/${sessionId}/report`);
     if (res.status === 200) return res.json();
     if (res.status === 202) {
       // still in progress — wait and retry
@@ -326,7 +329,7 @@ The report JSON from step 4 contains everything you need:
 **Use when:** Showing the full conversation history.
 
 ```
-GET /interview/{session_id}/transcript
+GET /ai/interview/{session_id}/transcript
 ```
 
 **Success — 200:**
@@ -369,15 +372,15 @@ GET /interview/{session_id}/transcript
 **Use when:** User wants to listen back to the interview.
 
 ```
-GET /interview/{session_id}/recording
+GET /ai/interview/{session_id}/recording
 ```
 
 **Success — 200:**
 ```json
 {
   "session_id": "88f0ad6e-...",
-  "url": "https://careepilot.s3.ap-southeast-1.amazonaws.com/recordings/88f0ad6e.ogg?X-Amz-Signature=...",
-  "format": "ogg",
+  "url": "https://careepilot.s3.ap-southeast-1.amazonaws.com/recordings/88f0ad6e-....wav?X-Amz-Signature=...",
+  "format": "wav",
   "recorded_at": "2026-06-29T14:00:00Z"
 }
 ```
@@ -395,7 +398,7 @@ Pass `data.url` directly to an `<audio>` element:
 | Code | Meaning |
 |---|---|
 | 200 | URL ready |
-| 404 | Recording not found — egress may have failed or session not ended yet |
+| 404 | Recording not found — upload to S3 may have failed or session not ended yet |
 
 ---
 
@@ -403,7 +406,7 @@ Pass `data.url` directly to an `<audio>` element:
 **Use when:** Checking if the server is up.
 
 ```
-GET /health
+GET /ai/interview/health
 ```
 
 **Success — 200:**
@@ -420,13 +423,13 @@ GET /health
 **Use when:** User logs in — fetch their past interviews to show a history page.
 
 ```
-GET /user/{user_id}/interviews
+GET /ai/interview/user/{user_id}/interviews
 ```
 
 **Example (JavaScript):**
 ```js
 async function getUserHistory(userId) {
-  const res = await fetch(`${BASE_URL}/user/${userId}/interviews`);
+  const res = await fetch(`${BASE_URL}/ai/interview/user/${userId}/interviews`);
   const data = await res.json();
   // data.interviews — array of past sessions, newest first
   return data.interviews;
@@ -482,13 +485,13 @@ Use each entry's `session_id` with `/interview/{session_id}/report`, `/transcrip
 
 ```
 /history  (on login)
-  └── GET /user/{user_id}/interviews → list of past sessions with scores
+  └── GET /ai/interview/user/{user_id}/interviews → list of past sessions with scores
 
 /start
-  ├── Upload Resume     → POST /upload/document  → save resume_text
-  ├── Upload JD         → POST /upload/document  → save jd_text
+  ├── Upload Resume     → POST /ai/interview/upload/document  → save resume_text
+  ├── Upload JD         → POST /ai/interview/upload/document  → save jd_text
   ├── Fill form         → round_type, candidate_name, num_questions, language
-  └── Click Start       → POST /interview/start (include user_id) → save session_id
+  └── Click Start       → POST /ai/interview/start (include user_id) → save session_id
 
 /interview
   ├── Connect to LiveKit room using user_token + livekit_url
